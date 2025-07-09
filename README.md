@@ -33,7 +33,7 @@ If RSI > 60 and Predicted Close < Current Price * 0.995 → SELL
 
 ### Architecture: Encoder-decoder Transformer
 
-Trained with:
+### Trained with:
 
 seq_len = 30
 label_len = 10
@@ -45,7 +45,7 @@ Scaling handled via scaler.pkl
 
 ### Analyzer: StrategyEvaluator
 
-Calculates:
+### Calculates:
 
 - Sharpe Ratio
 - Max Drawdown
@@ -55,6 +55,7 @@ Calculates:
 - Total Return
 
 ### === Performance Metrics ===
+
 Sharpe Ratio: -0.81
 Max Drawdown: 3.63%
 Win Rate: 69.09%
