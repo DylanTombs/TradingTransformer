@@ -56,12 +56,12 @@ Scaling handled via scaler.pkl
 
 ### === Performance Metrics ===
 
-Sharpe Ratio: -0.81
-Max Drawdown: 3.63%
-Win Rate: 69.09%
-Profit Factor: 2.11
-Avg Risk/Reward: 0.94:1
-Total Return: 7.18%
+- Sharpe Ratio: -0.81
+- Max Drawdown: 3.63%
+- Win Rate: 69.09%
+- Profit Factor: 2.11
+- Avg Risk/Reward: 0.94:1
+- Total Return: 7.18%
 
 Note: Despite a high win rate and positive profit factor, the Sharpe Ratio is negative — suggesting volatility or return inconsistency.Further tuning or trade sizing logic is being worked on.
 
