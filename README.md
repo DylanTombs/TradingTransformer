@@ -31,9 +31,9 @@ If RSI > 60 and Predicted Close < Current Price * 0.995 → SELL
 
 ## Transformer Model Details
 
-## Architecture: Encoder-decoder Transformer
+### Architecture: Encoder-decoder Transformer
 
-## Trained with:
+Trained with:
 
 seq_len = 30
 label_len = 10
