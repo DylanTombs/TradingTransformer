@@ -63,7 +63,7 @@ Scaling handled via scaler.pkl
 - Avg Risk/Reward: 0.94:1
 - Total Return: 7.18%
 
-![Test One](stocks1.png)
+![Test One](Stocks1.png)
 
 Note: Despite a high win rate and positive profit factor, the Sharpe Ratio is negative — suggesting volatility or return inconsistency.Further tuning or trade sizing logic is being worked on.
 
