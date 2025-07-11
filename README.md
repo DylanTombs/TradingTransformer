@@ -56,7 +56,7 @@ Scaling handled via scaler.pkl
 
 ### === Performance Metrics ===
 
-- Sharpe Ratio: -0.81
+- Sharpe Ratio: -0.31
 - Max Drawdown: 3.63%
 - Win Rate: 69.09%
 - Profit Factor: 2.11
