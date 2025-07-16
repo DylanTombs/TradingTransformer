@@ -6,7 +6,6 @@ import numpy as np
 def calculate_technical_indicators(df):
     """Compute technical indicators and features."""
     df = df.copy()
-    df['log_close'] = np.log(df['close'])
     returns = df['close'].pct_change()
 
     # RSI (14)
@@ -69,11 +68,26 @@ def create_combined_csv(ticker_paths, output_path='all_stocks_processed.csv'):
 # Example usage
 if __name__ == '__main__':
     ticker_paths = [
-        'Data/MSFT.csv',
+        'Data/AAPL.csv',
+        'Data/ADBE.csv',
+        'Data/AMD.csv',
+        'Data/AXP.csv',
+        'Data/BAC.csv',
         'Data/BLK.csv',
-       # 'Data/CVX.csv',
-       # 'Data/TSLA.csv',
-        #'Data/GS.csv',
-        #'Data/MS.csv',
+        'Data/C.csv',
+        'Data/CRM.csv',
+        'Data/CVX.csv',
+        'Data/GOOGL.csv',
+        'Data/GS.csv',
+        'Data/INTC.csv',
+        'Data/JNJ.csv',
+        'Data/JPM.csv',
+        'Data/MA.csv',
+        'Data/META.csv',
+        'Data/MS.csv',
+        'Data/MSFT.csv',
+        'Data/TSLA.csv',
+        'Data/V.csv',
+        'Data/WMT.csv',
     ]
     create_combined_csv(ticker_paths)

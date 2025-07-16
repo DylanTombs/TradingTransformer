@@ -33,8 +33,8 @@ class Model_Interface():
 
         if flag != 'train' and hasattr(self.args, 'checkpoints'):
             try:
-                featureScaler = joblib.load(os.path.join(self.args.checkpoints, 'feature_scaler.pkl'))
-                targetScaler = joblib.load(os.path.join(self.args.checkpoints, 'target_scaler.pkl'))
+                featureScaler = joblib.load(os.path.join(self.args.checkpoints, 'featureScaler.pkl'))
+                targetScaler = joblib.load(os.path.join(self.args.checkpoints, 'targetScaler.pkl'))
             except FileNotFoundError:
                 print("Warning: Scaler files not found, fitting new scalers")
 
@@ -108,12 +108,13 @@ class Model_Interface():
         trainData, trainLoader = self.getData(flag='train', data=trainDf)
 
         path = self.args.checkpoints
-        
+
         os.makedirs(path, exist_ok=True)
-        if hasattr(trainData, 'feature_scaler'):
-            joblib.dump(trainData.featureScaler, os.path.join(path, 'feature_scaler.pkl'))
-        if hasattr(trainData, 'target_scaler'):
-            joblib.dump(trainData.targetScaler, os.path.join(path, 'target_scaler.pkl'))
+        if hasattr(trainData, 'featureScaler'):
+            joblib.dump(trainData.featureScaler, os.path.join(path, 'featureScaler.pkl'))
+            print(f"Saved feature scaler to {os.path.join(path, 'featureScaler.pkl')}")
+        if hasattr(trainData, 'targetScaler'):
+            joblib.dump(trainData.targetScaler, os.path.join(path, 'targetScaler.pkl'))
 
         valData, valLoader = self.getData(flag='val', data=valDf)
         testData, testLoader = self.getData(flag='test', data=testDf)
@@ -181,7 +182,7 @@ class Model_Interface():
 
         # === Load best model weights ===
         bestModelPath = os.path.join(path, 'checkpoint.pth')
-        self.model.loadStateDict(torch.load(bestModelPath))
+        self.model.load_state_dict(torch.load(bestModelPath))
         print(f"Trained model loaded from {bestModelPath}")    
        
     def test(self, data, test=0):
@@ -285,6 +286,6 @@ class Model_Interface():
             outputs = self.model(seqX, seqXMark, decInp, seqYMark)[0]
 
             preds = outputs.detach().cpu().numpy().squeeze(0)
-            closePreds = targetScaler.inverseTransform(preds.reshape(-1, 1)).flatten()
+            closePreds = targetScaler.inverse_transform(preds.reshape(-1, 1)).flatten()
 
             return closePreds
