@@ -1,7 +1,7 @@
 import backtrader as bt
 import pandas as pd
 import numpy as np
-from datetime import datetime
+import matplotlib.pyplot as plt
 
 # Your existing strategies
 from RsiEmaStrategy import RsiEmaStrategy  
@@ -14,6 +14,7 @@ class StrategyEvaluator(bt.Analyzer):
         self.trades = []
         self.values = []
         self.trade_returns = []
+        self.equity_curve = []
 
         
     def start(self):
@@ -110,14 +111,11 @@ class StrategyEvaluator(bt.Analyzer):
 
         return flagged
 
-# ---------------------------
-# 2. Enhanced Simulation Runner
-# ---------------------------
 def RunSimulation(strategy):
     cerebro = bt.Cerebro()
     cerebro.adddata(datafeed)
     cerebro.addstrategy(strategy)
-    cerebro.broker.set_cash(10000)
+    cerebro.broker.set_cash(1000)
     
     # Add analyzers
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
@@ -140,7 +138,7 @@ def RunSimulation(strategy):
     print(f"Win Rate: {custom['win_rate']:.2f}%")
     print(f"Profit Factor: {custom['profit_factor']:.2f}")
     print(f"Avg Risk/Reward: {custom['avg_risk_reward']:.2f}:1")
-    print(f"Total Return: {(cerebro.broker.getvalue() / 10000 - 1) * 100:.2f}%")
+    print(f"Total Return: {(cerebro.broker.getvalue() / 1000 - 1) * 100:.2f}%")
     
     if custom.get('bad_trades'):
         print(f"\n⚠️ Trades hurting Sharpe: {custom['bad_trades']}")
@@ -149,6 +147,19 @@ def RunSimulation(strategy):
             print(f"Trade {i}: Return={t['return']:.4f}, PnL={t['pnlcomm']:.2f}, Duration={t['duration']} bars")
 
     cerebro.plot(style='candlestick')
+
+
+    equity = strat.analyzers.custom_metrics.values  # or cerebro.run()[0].equity_curve
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(equity, label='Equity Curve')
+    plt.title('Equity Curve')
+    plt.xlabel('Bar Number')
+    plt.ylabel('Portfolio Value')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 # ---------------------------
 # 3. Load Data (unchanged)
@@ -170,4 +181,3 @@ datafeed = bt.feeds.PandasData(
 
 # Run with your preferred strategy
 RunSimulation(RsiEmaStrategy)
-# RunSimulation(GoldenCross)  

@@ -5,6 +5,8 @@ import os
 import joblib
 import random
 from Transformer.Interface import Model_Interface
+from Transformer.DataFrame import DataFrameDataset
+from torch.utils.data import DataLoader
 import numpy as np
 from argparse import Namespace as dotdict
 
@@ -13,7 +15,7 @@ class RsiEmaStrategy(bt.Strategy):
     params = (
         ('emaPeriod', 10),
         ('rsiPeriod', 14),
-        ('seqLen', 20),
+        ('seqLen', 30),
         ('labelLen', 10),
         ('predLen', 5),
     )
@@ -23,10 +25,9 @@ class RsiEmaStrategy(bt.Strategy):
         self.rsi = bt.indicators.RSI(self.data.close, period=self.p.rsiPeriod)
         self.buffer = []
 
-        self.columns = ['close',
-                        'volume_zscore', 'rsi', 'macd', 'overnight_gap',
-                        'return_lag_1', 'return_lag_3', 'return_lag_5', 'volatility']
-
+        self.columns = ['date', 'close',
+            'volume_zscore', 'rsi', 'macd', 'overnight_gap',
+            'return_lag_1', 'return_lag_3', 'return_lag_5', 'volatility']
         args = self.setupArgs()
 
         random.seed(args.seed)
@@ -39,8 +40,7 @@ class RsiEmaStrategy(bt.Strategy):
         self.model.model.load_state_dict(torch.load(modelPath))
         self.model.model.eval()
 
-        scalerPath = os.path.join(args.checkpoints, 'featureScaler.pkl')
-        self.scaler = joblib.load(scalerPath)
+        self.prediction = 0
 
     def setupArgs(self):
         args = dotdict()
@@ -98,6 +98,7 @@ class RsiEmaStrategy(bt.Strategy):
         ret5 = self.calculateReturn(5)
 
         row = {
+            'date' : self.data.datetime.date(0),
             'close': self.data.close[0],
             'volume': self.data.volume[0],
             'open': self.data.open[0],
@@ -121,18 +122,51 @@ class RsiEmaStrategy(bt.Strategy):
 
         if len(self.buffer) == self.p.seqLen:
             try:
+
+                
                 dfWindow = pd.DataFrame(self.buffer)[self.columns]
-                scaledWindow = self.scaler.transform(dfWindow)
-
-                seqX = torch.tensor(scaledWindow, dtype=torch.float32).unsqueeze(0).to(self.model.device)
-                seqXMark = torch.zeros((1, self.p.seqLen, 3)).to(self.model.device)
-                seqYMark = torch.zeros((1, self.p.labelLen + self.p.predLen, 3)).to(self.model.device)
-
+                featureScaler = joblib.load(os.path.join(self.model.args.checkpoints, 'featureScaler.pkl'))
+                targetScaler = joblib.load(os.path.join(self.model.args.checkpoints, 'targetScaler.pkl'))
+                
+                
+                pred_data = DataFrameDataset(
+                    df=dfWindow,  # Your new data (ensure same columns/order as training!)
+                    flag='pred',  # Or 'test', but avoid 'train' to prevent scaler fitting
+                    size=(self.model.args.seqLen, self.model.args.labelLen, self.model.args.predLen),
+                    target=self.model.args.target,
+                    auxilFeatures=self.model.args.auxilFeatures,
+                    featureScaler=featureScaler,  # Provide pre-fit scalers
+                    targetScaler=targetScaler
+                )
+                print("Dataset Fine")
+                pred_loader = DataLoader(
+                    pred_data,
+                    batch_size=1,  # Predict one sequence at a time
+                    shuffle=False,  # Critical!
+                    num_workers=0
+                )
+                print("Loader fine")
                 with torch.no_grad():
-                    pred = self.model.predict(seqX, seqXMark, seqYMark)
+                    for (batchX, batchY, batchXMark, batchYMark) in pred_loader:
+                        print("here")
+                        print("Batch shapes:")
+                        print("X:", batchX.shape)  # Should be [1, seq_len, n_features]
+                        print("Y:", batchY.shape)
+                        pred = self.model.predict(
+                            batchX.to(self.model.device),
+                            batchXMark.to(self.model.device),
+                            batchYMark.to(self.model.device),
+                            targetScaler=targetScaler  # Pass scaler to avoid reloading
+                        )
                     predClose = pred[-1]
 
+
                 currentPrice = self.data.close[0]
+
+                print(f"Previous Prediction: {self.prediction}")
+                print(f"The real price: {currentPrice}")
+
+                self.prediction = predClose
 
                 if rsi < 40 and predClose > currentPrice * 1.005 and self.getposition().size == 0:
                     self.buy(size=10)
@@ -140,6 +174,7 @@ class RsiEmaStrategy(bt.Strategy):
                     self.close()
 
             except Exception as e:
+                pass
                 print(f"Prediction error: {str(e)}")
 
     def calculateMacd(self):

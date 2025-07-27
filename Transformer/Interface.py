@@ -257,26 +257,16 @@ class Model_Interface():
 
         return
 
-    def predict(self, seqX, seqXMark, seqYMark, load=False, setting=None):
+    def predict(self, seqX, seqXMark, seqYMark, load=False, setting=None, targetScaler=None):
         self.model.eval()
-
-        featureScaler = joblib.load(os.path.join(self.args.checkpoints, 'feature_scaler.pkl'))
-        targetScaler = joblib.load(os.path.join(self.args.checkpoints, 'target_scaler.pkl'))
 
         if load and setting:
             path = os.path.join(self.args.checkpoints, setting)
             bestModelPath = path + '/' + 'checkpoint.pth'
-            self.model.loadStateDict(torch.load(bestModelPath))
+            self.model.load_state_dict(torch.load(bestModelPath))
 
         with torch.no_grad():
-            seqXNP = seqX.numpy().squeeze(0)
-
-            auxilFeatures = seqXNP[:, :-1]
-            scaledAuxil = featureScaler.transform(auxilFeatures)
-            targetValues = seqXNP[:, -1:]
-            scaledSeqX = np.concatenate([scaledAuxil, targetValues], axis=1)
-
-            seqX = torch.from_numpy(scaledSeqX).unsqueeze(0).float().to(self.device)
+            seqX = seqX.float().to(self.device)
             seqXMark = seqXMark.float().to(self.device)
             seqYMark = seqYMark.float().to(self.device)
 

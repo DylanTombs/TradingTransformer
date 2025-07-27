@@ -9,11 +9,12 @@ class DataFrameDataset(Dataset):
             raise ValueError("df must be a pandas DataFrame")
         if target not in df.columns:
             raise ValueError(f"Target column '{target}' not found in DataFrame")
-
+        
         self.flag = flag
         self.seqLen = size[0]
         self.labelLen = size[1]
         self.predLen = size[2]
+        print(size)
         self.target = target
         self.auxilFeatures = auxilFeatures
 
@@ -76,17 +77,34 @@ class DataFrameDataset(Dataset):
     def __getitem__(self, index):
         sBegin = index
         sEnd = sBegin + self.seqLen
-        rBegin = sEnd - self.labelLen
-        rEnd = rBegin + self.labelLen + self.predLen
 
-        seqX = self.dataX[sBegin:sEnd]
-        seqY = self.dataY[rBegin:rEnd]
-        seqXMark = self.dataStamp[sBegin:sEnd]
-        seqYMark = self.dataStamp[rBegin:rEnd]
+        if self.flag == "pred":
+            seqX = self.dataX[sBegin:sEnd]
+        
+            # Create properly sized output tensor (labelLen + predLen)
+            seqY = np.zeros((self.labelLen + self.predLen, self.dataX.shape[1]))
+        
+            # Fill available future data if possible
+            if len(self.dataX) > sEnd:
+                available = min(self.labelLen + self.predLen, len(self.dataX) - sEnd)
+                seqY[:available] = self.dataX[sEnd:sEnd+available]
+            
+            seqXMark = self.dataStamp[sBegin:sEnd]
+            seqYMark = self.dataStamp[-len(seqY):] 
+        else: 
+            rBegin = sEnd - self.labelLen
+            rEnd = rBegin + self.labelLen + self.predLen
+
+            seqX = self.dataX[sBegin:sEnd]
+            seqY = self.dataY[rBegin:rEnd]
+            seqXMark = self.dataStamp[sBegin:sEnd]
+            seqYMark = self.dataStamp[rBegin:rEnd]
 
         return seqX, seqY, seqXMark, seqYMark
 
     def __len__(self):
+        if self.flag == "pred":
+            return 1
         return len(self.dataX) - self.seqLen - self.predLen + 1
 
     def inverseTransform(self, data, isTarget=True):
