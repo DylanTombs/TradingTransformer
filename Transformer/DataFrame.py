@@ -14,7 +14,6 @@ class DataFrameDataset(Dataset):
         self.seqLen = size[0]
         self.labelLen = size[1]
         self.predLen = size[2]
-        print(size)
         self.target = target
         self.auxilFeatures = auxilFeatures
 

@@ -138,20 +138,14 @@ class RsiEmaStrategy(bt.Strategy):
                     featureScaler=featureScaler,  # Provide pre-fit scalers
                     targetScaler=targetScaler
                 )
-                print("Dataset Fine")
                 pred_loader = DataLoader(
                     pred_data,
                     batch_size=1,  # Predict one sequence at a time
                     shuffle=False,  # Critical!
                     num_workers=0
                 )
-                print("Loader fine")
                 with torch.no_grad():
                     for (batchX, batchY, batchXMark, batchYMark) in pred_loader:
-                        print("here")
-                        print("Batch shapes:")
-                        print("X:", batchX.shape)  # Should be [1, seq_len, n_features]
-                        print("Y:", batchY.shape)
                         pred = self.model.predict(
                             batchX.to(self.model.device),
                             batchXMark.to(self.model.device),
