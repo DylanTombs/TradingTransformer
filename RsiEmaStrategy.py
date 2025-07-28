@@ -18,6 +18,10 @@ class RsiEmaStrategy(bt.Strategy):
         ('seqLen', 30),
         ('labelLen', 10),
         ('predLen', 5),
+        ('buy_threshold', 1.005),
+        ('sell_threshold', 0.995),
+        ('rsi_buy', 40),
+        ('rsi_sell', 60),
     )
 
     def __init__(self):
@@ -41,6 +45,7 @@ class RsiEmaStrategy(bt.Strategy):
         self.model.model.eval()
 
         self.prediction = 0
+        self.uncertainty = 0
 
     def setupArgs(self):
         args = dotdict()
@@ -144,28 +149,29 @@ class RsiEmaStrategy(bt.Strategy):
                     shuffle=False,  # Critical!
                     num_workers=0
                 )
+                preds = []
                 with torch.no_grad():
-                    for (batchX, batchY, batchXMark, batchYMark) in pred_loader:
-                        pred = self.model.predict(
-                            batchX.to(self.model.device),
-                            batchXMark.to(self.model.device),
-                            batchYMark.to(self.model.device),
-                            targetScaler=targetScaler  # Pass scaler to avoid reloading
-                        )
-                    predClose = pred[-1]
+                    for _ in range(5): 
+                        for (batchX, batchY, batchXMark, batchYMark) in pred_loader:
+                            pred = self.model.predict(
+                                batchX.to(self.model.device),
+                                batchXMark.to(self.model.device),
+                                batchYMark.to(self.model.device),
+                                targetScaler=targetScaler  # Pass scaler to avoid reloading
+                            )
+                            preds.append(pred[-1])
 
+                preds = np.array(preds)
+                self.prediction = preds.mean()
+                self.uncertainty = preds.std()
 
                 currentPrice = self.data.close[0]
 
-                print(f"Previous Prediction: {self.prediction}")
-                print(f"The real price: {currentPrice}")
-
-                self.prediction = predClose
-
-                if rsi < 40 and predClose > currentPrice * 1.005 and self.getposition().size == 0:
-                    self.buy(size=10)
-                elif rsi > 60 and predClose < currentPrice * 0.995 and self.getposition().size > 0:
-                    self.close()
+                if self.uncertainty < 0.01:
+                    if rsi < self.p.rsi_buy and self.prediction > currentPrice * self.p.buy_threshold and self.getposition().size == 0:
+                        self.buy(size=10)
+                    elif rsi > self.p.rsi_sell and self.prediction < currentPrice * self.p.sell_threshold and self.getposition().size > 0:
+                        self.close()
 
             except Exception as e:
                 pass
