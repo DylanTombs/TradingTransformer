@@ -164,7 +164,7 @@ def RunSimulation(strategy):
 # ---------------------------
 # 3. Load Data (unchanged)
 # ---------------------------
-data = pd.read_csv('PEP.csv')
+data = pd.read_csv('NKE.csv')
 data['date'] = pd.to_datetime(data['date'])
 data.set_index('date', inplace=True)
 

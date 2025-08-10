@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # Configuration
-API_KEY = "QY3LZIA40AYFE98S"  # Replace with your key
+API_KEY = ""  # Replace with your key
 
 def get_alphavantage_data(symbol, start_date, end_date):
     """Fetches daily OHLCV data with built-in caching"""
