@@ -7,15 +7,25 @@ from Transformer.Tools import EarlyStopping, adjustLearningRate
 import pandas as pd
 import numpy as np
 import torch
+
 import joblib
 import torch.nn as nn
 from torch import optim
 
+import logging
 import os
 import time
 import warnings
 warnings.filterwarnings('ignore')
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("training.log"),  # save to file
+        logging.StreamHandler()               # print to console
+    ]
+)
 
 class Model_Interface():
     def __init__(self, args):
@@ -38,15 +48,24 @@ class Model_Interface():
             except FileNotFoundError:
                 print("Warning: Scaler files not found, fitting new scalers")
 
-        dataSet = DataFrameDataset(
+        dataSet = DataFrameDataset(  # Use new stock-aware dataset
             df=data,
             flag=flag,
             size=(self.args.seqLen, self.args.labelLen, self.args.predLen),
             target=self.args.target,
             auxilFeatures=self.args.auxilFeatures,
             featureScaler=featureScaler,
-            targetScaler=targetScaler
+            targetScaler=targetScaler,
+            stockColumn='ticker'  # Add this parameter
         )
+
+        # NEW: Window count verification
+        print(f"{flag.upper()} dataset:")
+        print(f"- Total rows in DataFrame: {len(data)}")
+        print(f"- Generated windows: {len(dataSet)}")
+        if hasattr(dataSet, 'valid_indices'):
+            print(f"- First window starts at index: {dataSet.valid_indices[0]}")
+            print(f"- Last window starts at index: {dataSet.valid_indices[-1]}")
 
         dataLoader = DataLoader(
             dataSet,
@@ -55,6 +74,11 @@ class Model_Interface():
             num_workers=self.args.numWorkers,
             drop_last=(flag != 'pred')
         )
+
+        print(f"- Total batches: {len(dataLoader)}")
+        print(f"- Batch size: {self.args.batchSize}")
+        print(f"- Estimated samples per epoch: {len(dataLoader)*self.args.batchSize}\n")
+        
         return dataSet, dataLoader
     
     def splitData(self, df):
@@ -75,7 +99,7 @@ class Model_Interface():
 
 
     def vali(self, valiData, valiLoader, criterion):
-        totalLoss = []
+        losses, rmses, mapes = [], [], []
         self.model.eval()
         with torch.no_grad():
             for i, (batchX, batchY, batchXMark, batchYMark) in enumerate(valiLoader):
@@ -91,20 +115,23 @@ class Model_Interface():
                 outputs = self.model(batchX, batchXMark, decInp, batchYMark)[0]
                 fDim = -1
                 outputs = outputs[:, -self.args.predLen:, fDim:]
-                batchY = batchY[:, -self.args.predLen:, fDim:].to(self.device)
+                targets = batchY[:, -self.args.predLen:, fDim:].to(self.device)
 
-                pred = outputs.detach().cpu()
-                true = batchY.detach().cpu()
+                mse, rmse, mape = compute_metrics(outputs, targets)
+                losses.append(mse)
+                rmses.append(rmse)
+                mapes.append(mape)
 
-                loss = criterion(pred, true)
-
-                totalLoss.append(loss)
-        totalLoss = np.average(totalLoss)
-        self.model.train()
-        return totalLoss
+        return np.mean(losses), np.mean(rmses), np.mean(mapes)
 
     def train(self, data):
         trainDf, valDf, testDf = self.splitData(data)
+
+        print(f"\nData Split Verification:")
+        print(f"Training samples: {len(trainDf)} rows ({len(trainDf)/len(data):.1%})")
+        print(f"Validation samples: {len(valDf)} rows ({len(valDf)/len(data):.1%})")
+        print(f"Testing samples: {len(testDf)} rows ({len(testDf)/len(data):.1%})")
+        print(f"Total samples: {len(trainDf)+len(valDf)+len(testDf)} (original: {len(data)})\n")
         trainData, trainLoader = self.getData(flag='train', data=trainDf)
 
         path = self.args.checkpoints
@@ -125,6 +152,10 @@ class Model_Interface():
 
         modelOptim = optim.Adam(self.model.parameters(), lr=self.args.learningRate)
         criterion = nn.MSELoss()
+
+        logging.info("Starting training loop...")
+        logging.info(f"Train steps per epoch: {trainSteps}")
+
 
         for epoch in range(self.args.trainEpochs):
             iterCount = 0
@@ -155,25 +186,35 @@ class Model_Interface():
                 trainLoss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
-                    print(f"\titers: {i + 1}, epoch: {epoch + 1} | loss: {loss.item():.7f}")
                     speed = (time.time() - timeNow) / iterCount
                     leftTime = speed * ((self.args.trainEpochs - epoch) * trainSteps - i)
-                    print(f"\tspeed: {speed:.4f}s/iter; left time: {leftTime:.4f}s")
+                    logging.info(
+                        f"Iter {i + 1}/{trainSteps}, Epoch {epoch + 1}/{self.args.trainEpochs} | "
+                        f"Loss: {loss.item():.7f} | Speed: {speed:.4f}s/iter | ETA: {leftTime/60:.2f} min"
+                    )
                     iterCount = 0
                     timeNow = time.time()
 
                 loss.backward()
                 modelOptim.step()
 
-            print(f"Epoch: {epoch + 1} cost time: {time.time() - epochTime:.2f}s")
-            trainLoss = np.average(trainLoss)
-            valLoss = self.vali(valData, valLoader, criterion)
-            testLoss = self.vali(testData, testLoader, criterion)
 
-            print(f"Epoch: {epoch + 1}, Steps: {trainSteps} | "
-                  f"Train Loss: {trainLoss:.7f} Vali Loss: {valLoss:.7f} Test Loss: {testLoss:.7f}")
+            trainMse = np.mean(trainLoss)
+            trainRmse = np.sqrt(trainMse)
+            trainMape = np.nan  # Not calculated for train set (optional)
 
-            earlyStopping(valLoss, self.model, path)
+            valMse, valRmse, valMape = self.vali(valData, valLoader, criterion)
+            testMse, testRmse, testMape = self.vali(testData, testLoader, criterion)
+
+            logging.info(
+                f"[Epoch {epoch + 1:03d}] "
+                f"Train MSE: {trainMse:.7f} | RMSE: {trainRmse:.7f} | "
+                f"Val MSE: {valMse:.7f} | RMSE: {valRmse:.7f} | MAPE: {valMape:.3f}% | "
+                f"Test MSE: {testMse:.7f} | RMSE: {testRmse:.7f} | MAPE: {testMape:.3f}% | "
+            )
+
+
+            earlyStopping(valMse, self.model, path)
             if earlyStopping.earlyStop:
                 print("Early stopping")
                 break
@@ -185,78 +226,6 @@ class Model_Interface():
         self.model.load_state_dict(torch.load(bestModelPath))
         print(f"Trained model loaded from {bestModelPath}")    
        
-    def test(self, data, test=0):
-        testData, testLoader = self.getData(flag='test', data=data)
-        if test:
-            print('loading model')
-            self.model.loadStateDict(torch.load(os.path.join('./checkpoints/', 'checkpoint.pth')))
-
-        preds = []
-        trues = []
-        folderPath = './test_results/'
-        if not os.path.exists(folderPath):
-            os.makedirs(folderPath)
-
-        self.model.eval()
-        with torch.no_grad():
-            for i, (batchX, batchY, batchXMark, batchYMark) in enumerate(testLoader):
-                batchX = batchX.float().to(self.device)
-                batchY = batchY.float().to(self.device)
-
-                batchXMark = batchXMark.float().to(self.device)
-                batchYMark = batchYMark.float().to(self.device)
-
-                decInp = torch.zeros_like(batchY[:, -self.args.predLen:, :]).float()
-                decInp = torch.cat([batchY[:, :self.args.labelLen, :], decInp], dim=1).float().to(self.device)
-
-                outputs = self.model(batchX, batchXMark, decInp, batchYMark)[0]
-
-                fDim = -1
-                outputs = outputs[:, -self.args.predLen:, fDim:]
-                batchY = batchY[:, -self.args.predLen:, fDim:].to(self.device)
-                outputs = outputs.detach().cpu().numpy()
-                batchY = batchY.detach().cpu().numpy()
-
-                pred = outputs
-                true = batchY
-
-                preds.append(pred)
-                trues.append(true)
-                if i % 20 == 0:
-                    input = batchX.detach().cpu().numpy()
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-
-        preds = np.array(preds)
-        trues = np.array(trues)
-        print('test shape:', preds.shape, trues.shape)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        print('test shape:', preds.shape, trues.shape)
-
-        folderPath = './results/'
-        if not os.path.exists(folderPath):
-            os.makedirs(folderPath)
-
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print('mse:{}, mae:{}'.format(mse, mae))
-        f = open("result.txt", 'a')
-        f.write('mse:{}, mae:{}'.format(mse, mae))
-        f.write('\n')
-        f.write('\n')
-        f.close()
-
-        np.save(folderPath + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folderPath + 'pred.npy', preds)
-        np.save(folderPath + 'true.npy', trues)
-
-        invTransformPreds = testData.inverseTransform(preds[:, 0, -1])
-        invTransformTrues = testData.inverseTransform(trues[:, 0, -1])
-        np.save(folderPath + 'scaled_back_pred.npy', invTransformPreds)
-        np.save(folderPath + 'scaled_back_true.npy', invTransformTrues)
-
-        return
-
     def predict(self, seqX, seqXMark, seqYMark, load=False, setting=None, targetScaler=None):
         self.model.eval()
 
@@ -279,3 +248,10 @@ class Model_Interface():
             closePreds = targetScaler.inverse_transform(preds.reshape(-1, 1)).flatten()
 
             return closePreds
+        
+def compute_metrics(outputs, targets):
+    """Return MSE, RMSE, and MAPE."""
+    mse = torch.mean((outputs - targets) ** 2).item()
+    rmse = np.sqrt(mse)
+    mape = torch.mean(torch.abs((targets - outputs) / (targets + 1e-8))).item() * 100
+    return mse, rmse, mape

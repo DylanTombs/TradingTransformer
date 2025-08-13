@@ -20,10 +20,10 @@ def setupArgs():
     
     # Data loader configuration
     args.target = 'close'
-    args.auxilFeatures = [
-        'volume_zscore', 'rsi', 'macd', 'overnight_gap',
-        'return_lag_1', 'return_lag_3', 'return_lag_5', 'volatility'
-    ]
+    args.auxilFeatures = ['high','low','volume','adj close','P', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3','obv',
+        'volume_zscore', 'rsi', 'macd','macds','macdh','sma','lma','sema','lema','overnight_gap',
+        'return_lag_1', 'return_lag_3', 'return_lag_5', 'volatility', 'SR_K', 'SR_D', 
+                    'SR_RSI_K', 'SR_RSI_D', 'ATR', 'HL_PCT', 'PCT_CHG']
     args.checkpoints = './checkpoints/'
     
     # Forecasting task parameters
