@@ -2,8 +2,9 @@ import backtrader as bt
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Your existing strategies
+import os
 from RsiEmaStrategy import RsiEmaStrategy  
 
 
@@ -111,10 +112,14 @@ class StrategyEvaluator(bt.Analyzer):
 
         return flagged
 
-def RunSimulation(strategy, symbol_files, cash=1000):
+def RunSimulation(strategy, symbol_files, cash=1000, saveResults = True):
+    results_dir = 'Results/Results2'
     results_summary = []
+    all_equity = {}
+    all_trades = []
     for symbol_file in symbol_files:
 
+        symbol = symbol_file.replace('.csv', '')
         data = pd.read_csv(symbol_file)
         data['date'] = pd.to_datetime(data['date'])
         data.set_index('date', inplace=True)
@@ -149,7 +154,7 @@ def RunSimulation(strategy, symbol_files, cash=1000):
         custom = strat.analyzers.custom_metrics.get_analysis()
 
         results_summary.append({
-            'Symbol': symbol_file.replace('.csv', ''),
+            'Symbol': symbol,
             'Start Value': startVal,
             'End Value': endVal,
             'Total Return %': (endVal / startVal - 1) * 100,
@@ -159,10 +164,60 @@ def RunSimulation(strategy, symbol_files, cash=1000):
             'Profit Factor': custom['profit_factor'],
             'Avg R/R': custom['avg_risk_reward'],
         })
+
+        if hasattr(strat.analyzers.custom_metrics, 'trades'):
+            for trade in strat.analyzers.custom_metrics.trades:
+                trade['symbol'] = symbol
+                all_trades.append(trade)
+
+        fig = cerebro.plot(style='candlestick', iplot=False)[0][0]
+        plt.title(f'{symbol} - Strategy')
+        
+        if saveResults:
+            plot_path = os.path.join(results_dir, f'{symbol}_Strategy.png')
+            fig.savefig(plot_path)
+            plt.close(fig)
+        else:
+            plt.show()
+        
+        equity = strat.analyzers.custom_metrics.values  # or cerebro.run()[0].equity_curve
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(equity, label='Equity Curve')
+        plt.title('Equity Curve')
+        plt.xlabel('Bar Number')
+        plt.ylabel('Portfolio Value')
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        
+        if saveResults:
+            plot_path = os.path.join(results_dir, f'{symbol}_Equity_Curve.png')
+            plt.savefig(plot_path)
+            plt.close(fig)
+        else:
+            plt.show()
+        
+        # Store equity data for aggregate plots
+        equity_data = pd.DataFrame({
+            'Date': data.index,
+            'Equity': cerebro.broker.getvalue(),
+            'Symbol': symbol
+        })
+        all_equity[symbol] = equity_data
+        
+        print(f"\nCompleted {symbol}")
+
+        equity_data = pd.DataFrame({
+            'Date': data.index,
+            'Equity': cerebro.broker.getvalue(),
+            'Symbol': symbol
+        })
+        all_equity[symbol] = equity_data
     
-        print(f"{symbol_file.replace('.csv', '')} sharpe ratio: {sharpe.get('sharperatio', 0.0)}")
+        print(f"{symbol} sharpe ratio: {sharpe.get('sharperatio', 0.0)}")
         if custom.get('bad_trades'):
-            print(f"\n⚠️ Trades hurting Sharpe: {custom['bad_trades']}")
+            print(f"\n Trades hurting Sharpe: {custom['bad_trades']}")
             for i in custom['bad_trades']:
                 t = strat.analyzers.custom_metrics.trades[i]
                 print(f"Trade {i}: Return={t['return']:.4f}, PnL={t['pnlcomm']:.2f}, Duration={t['duration']} bars")
@@ -170,41 +225,117 @@ def RunSimulation(strategy, symbol_files, cash=1000):
     df_results = pd.DataFrame(results_summary)
     df_results = df_results.sort_values(by='Total Return %', ascending=False)
 
-    # Optional: Bar plot of returns
-    plt.figure(figsize=(8, 5))
-    plt.bar(df_results['Symbol'], df_results['Total Return %'])
-    plt.title(f'Strategy Benchmark')
-    plt.ylabel('Return %')
+    if saveResults:
+        results_file = os.path.join(results_dir, f'strategy_results1.csv')
+        df_results.to_csv(results_file, index=False)
+        print(f"\nSaved results to {results_file}")
+
+    create_aggregate_plots(df_results, all_equity, all_trades, saveResults, results_dir)
+    
+    return df_results, all_equity, all_trades
+
+def create_aggregate_plots(df_results, all_equity, all_trades, save_results, results_dir):
+    """Create various aggregate plots for strategy analysis"""
+    
+    # 1. Performance Bar Plot
+    plt.figure(figsize=(14, 7))
+    ax = sns.barplot(x='Symbol', y='Total Return %', data=df_results)
+    plt.title('Strategy Performance by Symbol')
+    plt.ylabel('Total Return %')
+    plt.xticks(rotation=45)
     plt.grid(True, axis='y')
-    plt.show()
-
-    return df_results
-
-
-    #equity = strat.analyzers.custom_metrics.values  # or cerebro.run()[0].equity_curve
-
-    #plt.figure(figsize=(10, 5))
-    #plt.plot(equity, label='Equity Curve')
-    #plt.title('Equity Curve')
-    #plt.xlabel('Bar Number')
-    #plt.ylabel('Portfolio Value')
-    #plt.grid(True)
-    #plt.legend()
-    #plt.tight_layout()
-    #plt.show()
+    
+    # Add value labels
+    for p in ax.patches:
+        ax.annotate(f"{p.get_height():.1f}%", 
+                   (p.get_x() + p.get_width() / 2., p.get_height()), 
+                   ha='center', va='center', 
+                   xytext=(0, 10), 
+                   textcoords='offset points')
+    
+    if save_results:
+        plt.savefig(os.path.join(results_dir, 'performance_comparison.png'))
+        plt.close()
+    else:
+        plt.show()
+    
+    # 2. Risk-Reward Scatter Plot
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(x='Max Drawdown %', y='Total Return %', 
+                    size='Sharpe Ratio', hue='Symbol',
+                    data=df_results, sizes=(50, 200))
+    plt.title('Risk-Reward Profile')
+    plt.grid(True)
+    
+    if save_results:
+        plt.savefig(os.path.join(results_dir, 'risk_reward.png'))
+        plt.close()
+    else:
+        plt.show()
+    
+    # 3. Combined Equity Curve
+    plt.figure(figsize=(14, 7))
+    for symbol, equity_data in all_equity.items():
+        plt.plot(equity_data['Date'], equity_data['Equity'], label=symbol)
+    
+    plt.title('Combined Equity Curves')
+    plt.ylabel('Portfolio Value')
+    plt.xlabel('Date')
+    plt.legend()
+    plt.grid(True)
+    
+    if save_results:
+        plt.savefig(os.path.join(results_dir, 'combined_equity.png'))
+        plt.close()
+    else:
+        plt.show()
+    
+    # 4. Trade Analysis (if we have trades)
+    if all_trades:
+        df_trades = pd.DataFrame(all_trades)
+        
+        # Trade Duration Distribution
+        plt.figure(figsize=(12, 5))
+        plt.subplot(1, 2, 1)
+        sns.histplot(df_trades['duration'], bins=20, kde=True)
+        plt.title('Trade Duration Distribution')
+        plt.xlabel('Duration (bars)')
+        
+        # Trade Returns Distribution
+        plt.subplot(1, 2, 2)
+        sns.histplot(df_trades['return']*100, bins=20, kde=True)
+        plt.title('Trade Returns Distribution')
+        plt.xlabel('Return %')
+        plt.tight_layout()
+        
+        if save_results:
+            plt.savefig(os.path.join(results_dir, 'trade_distributions.png'))
+            plt.close()
+        else:
+            plt.show()
+        
+        # Win/Loss by Symbol
+        if len(df_trades['symbol'].unique()) > 1:
+            plt.figure(figsize=(12, 6))
+            sns.boxplot(x='symbol', y='return', data=df_trades)
+            plt.title('Return Distribution by Symbol')
+            plt.ylabel('Return')
+            plt.xlabel('Symbol')
+            plt.xticks(rotation=45)
+            plt.grid(True, axis='y')
+            
+            if save_results:
+                plt.savefig(os.path.join(results_dir, 'returns_by_symbol.png'))
+                plt.close()
+            else:
+                plt.show()
 
 symbol_files = [
     'PEP.csv',
     'BX.csv',
     'ASML.csv',
     'UNH.csv',
-    'AMZN.csv',
     'KDP.csv',
-    'NKE.csv',
-    'PFE.csv',
-    'PG.csv',
-    'SHOP.csv',
-    'UNH.csv'
 ]
-# Run with your preferred strategy
+
 RunSimulation(RsiEmaStrategy, symbol_files)
