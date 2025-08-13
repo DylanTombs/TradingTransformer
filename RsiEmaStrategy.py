@@ -115,7 +115,7 @@ class RsiEmaStrategy(bt.Strategy):
         # Calculate OBV
         obv = self.calculateOBV()
 
-        # Calculate indicators using existing functions
+        # Calculate indicators
         rsi = self.calculateRsi()
         macd = self.calculateMacd()
         volZ = self.calculateVolumeZscore()
@@ -204,19 +204,19 @@ class RsiEmaStrategy(bt.Strategy):
                 
                 
                 pred_data = DataFrameDataset(
-                    df=dfWindow,  # Your new data (ensure same columns/order as training!)
-                    flag='pred',  # Or 'test', but avoid 'train' to prevent scaler fitting
+                    df=dfWindow,  
+                    flag='pred',  
                     size=(self.model.args.seqLen, self.model.args.labelLen, self.model.args.predLen),
                     target=self.model.args.target,
                     auxilFeatures=self.model.args.auxilFeatures,
-                    featureScaler=featureScaler,  # Provide pre-fit scalers
+                    featureScaler=featureScaler,  
                     targetScaler=targetScaler,
                     stockColumn= 'ticker'
                 )
                 pred_loader = DataLoader(
                     pred_data,
-                    batch_size=1,  # Predict one sequence at a time
-                    shuffle=False,  # Critical!
+                    batch_size=1,  
+                    shuffle=False,  
                     num_workers=0
                 )
                 preds = []
@@ -227,7 +227,7 @@ class RsiEmaStrategy(bt.Strategy):
                                 batchX.to(self.model.device),
                                 batchXMark.to(self.model.device),
                                 batchYMark.to(self.model.device),
-                                targetScaler=targetScaler  # Pass scaler to avoid reloading
+                                targetScaler=targetScaler  
                             )
                             preds.append(pred[-1])
 
@@ -301,17 +301,17 @@ class RsiEmaStrategy(bt.Strategy):
         if len(self.data) < 2:
             return self.data.volume[0]
 
-        prev_close = self.data.close[-1]
-        current_volume = self.data.volume[0]
+        prevClose = self.data.close[-1]
+        currentVolume = self.data.volume[0]
 
         if not hasattr(self, 'obv'):
-            self.obv = current_volume
+            self.obv = currentVolume
             return self.obv
 
-        if self.data.close[0] > prev_close:
-            self.obv += current_volume
-        elif self.data.close[0] < prev_close:
-            self.obv -= current_volume
+        if self.data.close[0] > prevClose:
+            self.obv += currentVolume
+        elif self.data.close[0] < prevClose:
+            self.obv -= currentVolume
 
         return self.obv
 
@@ -337,18 +337,18 @@ class RsiEmaStrategy(bt.Strategy):
         return SR_K, SR_D
 
     def calculateStochRSI(self, rsi):
-        if not hasattr(self, 'rsi_buffer'):
-            self.rsi_buffer = []
+        if not hasattr(self, 'RSIBuffer'):
+            self.RSIBuffer = []
 
-        self.rsi_buffer.append(rsi)
-        if len(self.rsi_buffer) > 14:
-            self.rsi_buffer.pop(0)
+        self.RSIBuffer.append(rsi)
+        if len(self.RSIBuffer) > 14:
+            self.RSIBuffer.pop(0)
 
-        if len(self.rsi_buffer) < 14:
+        if len(self.RSIBuffer) < 14:
             return 50, 50
 
-        rsi_high = max(self.rsi_buffer)
-        rsi_low = min(self.rsi_buffer)
+        rsi_high = max(self.RSIBuffer)
+        rsi_low = min(self.RSIBuffer)
 
         SR_RSI_K = 100 * (rsi - rsi_low) / (rsi_high - rsi_low + 1e-10)
 
@@ -373,44 +373,44 @@ class RsiEmaStrategy(bt.Strategy):
             setattr(self, f'ema_{span}', self.data.close[0])
             return self.data.close[0]
 
-        prev_ema = getattr(self, f'ema_{span}')
+        prevEMA = getattr(self, f'ema_{span}')
         alpha = 2 / (span + 1)
-        current_ema = alpha * self.data.close[0] + (1 - alpha) * prev_ema
-        setattr(self, f'ema_{span}', current_ema)
-        return current_ema
+        currentEMA = alpha * self.data.close[0] + (1 - alpha) * prevEMA
+        setattr(self, f'ema_{span}', currentEMA)
+        return currentEMA
 
     def calculateMACDSignal(self):
         if len(self.data) < 26 + 9:
             return None
 
-        macd_values = []
+        MACDValues = []
         for i in range(9):
             closes = np.array([self.data.close[-i-j] for j in range(26)][::-1])
             ema12 = closes[-12:].mean()
             ema26 = closes.mean()
-            macd_values.append(ema12 - ema26)
+            MACDValues.append(ema12 - ema26)
 
-        return sum(macd_values) / len(macd_values)
+        return sum(MACDValues) / len(MACDValues)
 
     def calculateATR(self):
         if len(self.data) < 14:
             return 0.0
 
-        true_ranges = []
+        trueRanges = []
         for i in range(14):
-            current_high = self.data.high[-i]
-            current_low = self.data.low[-i]
+            currentHigh = self.data.high[-i]
+            currentLow = self.data.low[-i]
             if i < len(self.data)-1:
-                prev_close = self.data.close[-i-1]
+                prevClose = self.data.close[-i-1]
             else:
-                prev_close = current_low
+                prevClose = currentLow
 
-            tr1 = current_high - current_low
-            tr2 = abs(current_high - prev_close)
-            tr3 = abs(current_low - prev_close)
-            true_ranges.append(max(tr1, tr2, tr3))
+            tr1 = currentHigh - currentLow
+            tr2 = abs(currentHigh - prevClose)
+            tr3 = abs(currentLow - prevClose)
+            trueRanges.append(max(tr1, tr2, tr3))
 
-        return sum(true_ranges) / len(true_ranges)
+        return sum(trueRanges) / len(trueRanges)
 
     def calculatePctChange(self):
         if len(self.data) < 2:

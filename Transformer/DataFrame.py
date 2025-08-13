@@ -66,7 +66,7 @@ class DataFrameDataset(Dataset):
         self.dataStamp = self._processTimeFeatures()
 
         self.valid_indices = []
-        grouped = df.reset_index().groupby(stockColumn)  # reset_index for positional slicing
+        grouped = df.reset_index().groupby(stockColumn) 
         for _, group in grouped:
             start_positions = list(range(0, len(group) - (self.seqLen + self.predLen) + 1, self.window_step))
             for pos in start_positions:
@@ -94,7 +94,7 @@ class DataFrameDataset(Dataset):
         timeSteps['weekday_sin'] = np.sin(2 * np.pi * dates.dt.weekday / 7)
         timeSteps['weekday_cos'] = np.cos(2 * np.pi * dates.dt.weekday / 7)
     
-        # Day of year normalized (trend position in year)
+        # Day of year normalized 
         timeSteps['day_of_year'] = dates.dt.dayofyear / 365.0
 
         if self.stock_column in self.df.columns:
@@ -114,10 +114,8 @@ class DataFrameDataset(Dataset):
         if self.flag == "pred":
             seqX = self.dataX[sBegin:sEnd]
         
-            # Create properly sized output tensor (labelLen + predLen)
             seqY = np.zeros((self.labelLen + self.predLen, self.dataX.shape[1]))
         
-            # Fill available future data if possible
             if len(self.dataX) > sEnd:
                 available = min(self.labelLen + self.predLen, len(self.dataX) - sEnd)
                 seqY[:available] = self.dataX[sEnd:sEnd+available]

@@ -10,6 +10,59 @@ This project is **centered around a Transformer neural network** that I have cre
 
 ---
 
+## Most Recent Results
+
+### Strategy Performance
+
+<p align="center">
+  <img src="Results/Results2/BX_Strategy.png" width="45%" />
+  <img src="Results/Results2/KDP_Strategy.png" width="45%" />
+</p>
+
+<p align="center">
+  <img src="Results/Results2/PEP_Strategy.png" width="45%" />
+  <img src="Results/Results2/KDP_Strategy.png" width="45%" />
+</p>
+
+<p align="center">
+  <img src="Results/Results2/UNH_Strategy.png" width="90%" />
+</p>
+
+### Equity Curves
+
+<p align="center">
+  <img src="Results/Results2/BX_Equity_Curve.png" width="45%" />
+  <img src="Results/Results2/KDP_Equity_Curve.png" width="45%" />
+</p>
+
+<p align="center">
+  <img src="Results/Results2/PEP_Equity_Curve.png" width="45%" />
+  <img src="Results/Results2/KDP_Equity_Curve.png" width="45%" />
+</p>
+
+<p align="center">
+  <img src="Results/Results2/UNH_Equity_Curve.png" width="90%" />
+</p>
+
+### Multi-Stock Comparisons
+
+<p align="center">
+  <img src="Results/Results2/trade_distributions.png" width="90%" />
+</p>
+
+<p align="center">
+  <img src="Results/Results2/returns_by_symbol.png" width="90%" />
+</p>
+
+<p align="center">
+  <img src="Results/Results2/risk_reward.png" width="90%" />
+</p>
+
+<p align="center">
+  <img src="Results/Results2/performance_comparison.png" width="90%" />
+</p>
+
+
 ## Strategy: `RsiEmaStrategy`
 
 This strategy is a **hybrid of deep learning and technical analysis**:
@@ -21,6 +74,10 @@ This strategy is a **hybrid of deep learning and technical analysis**:
 ### Input Features to Transformer:
 - `close`
 - `volume_zscore`, `rsi`, `macd`, `overnight_gap`, `return_lag_1`, `return_lag_3`, `return_lag_5`, `volatility`
+
+### New Input Features to Transformer:
+- `close`
+- `high`, `low`, `volume`,`adj close`,`P`, `R1`, `R2`, `R3`, `S1`, `S2`, `S3`,`obv`, `volume_zscore`, `rsi`, `macd`,`macds`,`macdh`, `sma`,`lma`,`sema`,`lema`,`overnight_gap`, `return_lag_1`, `return_lag_3`, `return_lag_5`, `volatility`, `SR_K`, `SR_D`, `SR_RSI_K`, `SR_RSI_D`, `ATR`, `HL_PCT`, `PCT_CHG`
 
 ### Trigger Logic:
 
@@ -43,7 +100,7 @@ Framework: PyTorch
 Uses multivariate inputs and predicts future close prices
 Scaling handled via scaler.pkl
 
-### Analyzer: StrategyEvaluator
+### Previous Analysis
 
 ### Calculates:
 
@@ -54,18 +111,16 @@ Scaling handled via scaler.pkl
 - Avg Risk/Reward
 - Total Return
 
-### === Performance Metrics ===
+### Previous Performance Metrics 
 
-- Sharpe Ratio: -0.31
+- Sharpe Ratio: 0.43
 - Max Drawdown: 3.63%
-- Win Rate: 69.09%
-- Profit Factor: 2.11
-- Avg Risk/Reward: 0.94:1
-- Total Return: 7.18%
+- Win Rate: 78.09%
+- Profit Factor: 3.43
+- Total Return: 95%
 
-![Test One](Stocks1.png)
+![Test One](Results/Results1/Results2.png)
 
-Note: Despite a high win rate and positive profit factor, the Sharpe Ratio is negative — suggesting volatility or return inconsistency.Further tuning or trade sizing logic is being worked on.
 
 
 
