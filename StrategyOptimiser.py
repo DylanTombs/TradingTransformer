@@ -3,16 +3,26 @@ import backtrader as bt
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from RsiEmaStrategy import RsiEmaStrategy  # Make sure this points to your updated strategy file
+from datetime import datetime
+import random
+import hashlib
 
-# === Load your datasets here ===
-TICKERS = ["PFE", "PEP","NKE","BX","ASML"]  # Add more tickers as needed
+from RsiEmaStrategy import RsiEmaStrategy  # Ensure path is correct
+
+# === CONFIG ===
+TICKERS = ['PEP', 'BX', 'ASML', 'UNH']
+RESULTS_CSV = Path("experiment_results.csv")
+SEED = 42
+
+# === SEEDING FOR REPRODUCIBILITY ===
+np.random.seed(SEED)
+random.seed(SEED)
+optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 def load_data(ticker):
     df = pd.read_csv(f"{ticker}.csv", index_col='date', parse_dates=True)
     df = df.sort_index()
-    data = bt.feeds.PandasData(dataname=df)
-    return data
+    return bt.feeds.PandasData(dataname=df)
 
 def run_backtest(params, tickers):
     results = []
@@ -40,10 +50,9 @@ def run_backtest(params, tickers):
 
         result = cerebro.run()[0]
 
-        sharpe = result.analyzers.sharpe.get_analysis().get('sharperatio', 0.0)
-        dd = result.analyzers.drawdown.get_analysis().get('max', {}).get('drawdown', 0.0)
-        total_return = result.analyzers.returns.get_analysis().get('rnorm100', 0.0)
-
+        sharpe = result.analyzers.sharpe.get_analysis().get('sharperatio', np.nan)
+        dd = result.analyzers.drawdown.get_analysis().get('max', {}).get('drawdown', np.nan)
+        total_return = result.analyzers.returns.get_analysis().get('rnorm100', np.nan)
 
         results.append({
             "ticker": ticker,
@@ -52,9 +61,30 @@ def run_backtest(params, tickers):
             "return": total_return
         })
 
-    # Aggregate Sharpe ratios across assets (mean or risk-weighted)
-    mean_sharpe = np.mean([r['sharpe'] for r in results])
-    return mean_sharpe
+    df_results = pd.DataFrame(results)
+    mean_sharpe = df_results["sharpe"].mean()
+    return mean_sharpe, df_results
+
+def save_trial_results(trial, mean_sharpe, per_ticker_df):
+    trial_data = {
+        "trial_number": trial.number,
+        "timestamp": datetime.utcnow().isoformat(),
+        "config_hash": hashlib.md5(str(trial.params).encode()).hexdigest(),
+        "mean_sharpe": mean_sharpe,
+        **trial.params
+    }
+    # Merge per-ticker stats into trial_data
+    for _, row in per_ticker_df.iterrows():
+        trial_data[f"{row['ticker']}_sharpe"] = row["sharpe"]
+        trial_data[f"{row['ticker']}_drawdown"] = row["drawdown"]
+        trial_data[f"{row['ticker']}_return"] = row["return"]
+
+    # Append to CSV
+    df_out = pd.DataFrame([trial_data])
+    if RESULTS_CSV.exists():
+        df_out.to_csv(RESULTS_CSV, mode="a", header=False, index=False)
+    else:
+        df_out.to_csv(RESULTS_CSV, index=False)
 
 def objective(trial):
     params = {
@@ -70,16 +100,20 @@ def objective(trial):
     }
 
     try:
-        score = run_backtest(params, TICKERS)
-        return score
+        mean_sharpe, per_ticker_df = run_backtest(params, TICKERS)
+        save_trial_results(trial, mean_sharpe, per_ticker_df)
+        return mean_sharpe
     except Exception as e:
-        print(f"Trial failed: {e}")
-        return -999  # Penalize invalid trials
+        print(f"[Trial {trial.number}] FAILED: {e}")
+        save_trial_results(trial, -999, pd.DataFrame({"ticker": TICKERS, "sharpe": [np.nan]*len(TICKERS), "drawdown": np.nan, "return": np.nan}))
+        return -999  # Penalize
 
 if __name__ == "__main__":
     study = optuna.create_study(direction="maximize", study_name="RsiEma_OptStudy")
-    study.optimize(objective, n_trials=50, timeout=360000)  # Adjust trials/time as needed
+    study.optimize(objective, n_trials=50, timeout=360000)
 
-    print("Best parameters:")
+    print("\n=== BEST PARAMETERS ===")
     print(study.best_trial.params)
     print(f"Best Sharpe: {study.best_value}")
+    print(f"Results saved to {RESULTS_CSV}")
+

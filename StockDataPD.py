@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # Configuration
-API_KEY = ""  # Replace with your key
+API_KEY = "QY3LZIA40AYFE98S"  # Replace with your key
 
 def get_alphavantage_data(symbol, start_date, end_date):
     """Fetches daily OHLCV data with built-in caching"""
@@ -54,5 +54,5 @@ def get_backup_data(symbol):
     return sample_data.get(symbol, pd.DataFrame())
 
 # Usage Example
-aapl_data = get_alphavantage_data("ASML", "2006-01-01", "2023-01-01")
+aapl_data = get_alphavantage_data("AMZN", "2006-01-01", "2023-01-01")
 print(aapl_data.head())

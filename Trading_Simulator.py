@@ -111,73 +111,100 @@ class StrategyEvaluator(bt.Analyzer):
 
         return flagged
 
-def RunSimulation(strategy):
-    cerebro = bt.Cerebro()
-    cerebro.adddata(datafeed)
-    cerebro.addstrategy(strategy)
-    cerebro.broker.set_cash(1000)
+def RunSimulation(strategy, symbol_files, cash=1000):
+    results_summary = []
+    for symbol_file in symbol_files:
+
+        data = pd.read_csv(symbol_file)
+        data['date'] = pd.to_datetime(data['date'])
+        data.set_index('date', inplace=True)
+
+        datafeed = bt.feeds.PandasData(
+            dataname=data,
+            datetime=None,
+            open='open',
+            high='high',
+            low='low',
+            close='close',
+            volume='volume',
+            openinterest=-1
+        )
+        cerebro = bt.Cerebro()
+        cerebro.adddata(datafeed)
+        cerebro.addstrategy(strategy)
+        cerebro.broker.set_cash(cash)
     
     # Add analyzers
-    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
-    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
-    cerebro.addanalyzer(StrategyEvaluator, _name='custom_metrics')
-    
-    print(f"Starting Portfolio Value: {cerebro.broker.getvalue():.2f}")
-    results = cerebro.run()
-    print(f"Final Portfolio Value: {cerebro.broker.getvalue():.2f}")
-    
-    # Print advanced metrics
-    strat = results[0]
-    sharpe = strat.analyzers.sharpe.get_analysis()
-    drawdown = strat.analyzers.drawdown.get_analysis()
-    custom = strat.analyzers.custom_metrics.get_analysis()
-    
-    print("\n=== Performance Metrics ===")
-    print(f"Sharpe Ratio: {sharpe['sharperatio']:.2f}")
-    print(f"Max Drawdown: {drawdown['max']['drawdown']:.2f}%")
-    print(f"Win Rate: {custom['win_rate']:.2f}%")
-    print(f"Profit Factor: {custom['profit_factor']:.2f}")
-    print(f"Avg Risk/Reward: {custom['avg_risk_reward']:.2f}:1")
-    print(f"Total Return: {(cerebro.broker.getvalue() / 1000 - 1) * 100:.2f}%")
-    
-    if custom.get('bad_trades'):
-        print(f"\n⚠️ Trades hurting Sharpe: {custom['bad_trades']}")
-        for i in custom['bad_trades']:
-            t = strat.analyzers.custom_metrics.trades[i]
-            print(f"Trade {i}: Return={t['return']:.4f}, PnL={t['pnlcomm']:.2f}, Duration={t['duration']} bars")
+        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
+        cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+        cerebro.addanalyzer(StrategyEvaluator, _name='custom_metrics')
 
-    cerebro.plot(style='candlestick')
+        startVal = cerebro.broker.getvalue()
+        results = cerebro.run()
+        endVal = cerebro.broker.getvalue()
 
+        strat = results[0]
+        sharpe = strat.analyzers.sharpe.get_analysis()
+        drawdown = strat.analyzers.drawdown.get_analysis()
+        custom = strat.analyzers.custom_metrics.get_analysis()
 
-    equity = strat.analyzers.custom_metrics.values  # or cerebro.run()[0].equity_curve
+        results_summary.append({
+            'Symbol': symbol_file.replace('.csv', ''),
+            'Start Value': startVal,
+            'End Value': endVal,
+            'Total Return %': (endVal / startVal - 1) * 100,
+            'Sharpe Ratio': sharpe.get('sharperatio', 0.0),
+            'Max Drawdown %': drawdown['max']['drawdown'],
+            'Win Rate %': custom['win_rate'],
+            'Profit Factor': custom['profit_factor'],
+            'Avg R/R': custom['avg_risk_reward'],
+        })
+    
+        print(f"{symbol_file.replace('.csv', '')} sharpe ratio: {sharpe.get('sharperatio', 0.0)}")
+        if custom.get('bad_trades'):
+            print(f"\n⚠️ Trades hurting Sharpe: {custom['bad_trades']}")
+            for i in custom['bad_trades']:
+                t = strat.analyzers.custom_metrics.trades[i]
+                print(f"Trade {i}: Return={t['return']:.4f}, PnL={t['pnlcomm']:.2f}, Duration={t['duration']} bars")
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(equity, label='Equity Curve')
-    plt.title('Equity Curve')
-    plt.xlabel('Bar Number')
-    plt.ylabel('Portfolio Value')
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
+    df_results = pd.DataFrame(results_summary)
+    df_results = df_results.sort_values(by='Total Return %', ascending=False)
+
+    # Optional: Bar plot of returns
+    plt.figure(figsize=(8, 5))
+    plt.bar(df_results['Symbol'], df_results['Total Return %'])
+    plt.title(f'Strategy Benchmark')
+    plt.ylabel('Return %')
+    plt.grid(True, axis='y')
     plt.show()
 
-# ---------------------------
-# 3. Load Data (unchanged)
-# ---------------------------
-data = pd.read_csv('NKE.csv')
-data['date'] = pd.to_datetime(data['date'])
-data.set_index('date', inplace=True)
+    return df_results
 
-datafeed = bt.feeds.PandasData(
-    dataname=data,
-    datetime=None,
-    open='open',
-    high='high',
-    low='low',
-    close='close',
-    volume='volume',
-    openinterest=-1
-)
 
+    #equity = strat.analyzers.custom_metrics.values  # or cerebro.run()[0].equity_curve
+
+    #plt.figure(figsize=(10, 5))
+    #plt.plot(equity, label='Equity Curve')
+    #plt.title('Equity Curve')
+    #plt.xlabel('Bar Number')
+    #plt.ylabel('Portfolio Value')
+    #plt.grid(True)
+    #plt.legend()
+    #plt.tight_layout()
+    #plt.show()
+
+symbol_files = [
+    'PEP.csv',
+    'BX.csv',
+    'ASML.csv',
+    'UNH.csv',
+    'AMZN.csv',
+    'KDP.csv',
+    'NKE.csv',
+    'PFE.csv',
+    'PG.csv',
+    'SHOP.csv',
+    'UNH.csv'
+]
 # Run with your preferred strategy
-RunSimulation(RsiEmaStrategy)
+RunSimulation(RsiEmaStrategy, symbol_files)
