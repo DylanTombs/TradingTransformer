@@ -54,5 +54,5 @@ def get_backup_data(symbol):
     return sample_data.get(symbol, pd.DataFrame())
 
 # Usage Example
-aapl_data = get_alphavantage_data("JNJ", "1990-01-01", "2025-01-01")
+aapl_data = get_alphavantage_data("PFE", "1990-01-01", "2025-01-01")
 print(aapl_data.head())
