@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import pandas as pd
 
 def calculate_technical_indicators(df):
@@ -125,27 +126,10 @@ def create_combined_csv(ticker_paths, output_path='all_stocks_processed.csv'):
 
 # Example usage
 if __name__ == '__main__':
+    data_dir = 'Data'  # Ensure this is the correct path to your folder
     ticker_paths = [
-        'Data/AAPL.csv',
-        'Data/ADBE.csv',
-        'Data/AMD.csv',
-        'Data/AXP.csv',
-        'Data/BAC.csv',
-        'Data/BLK.csv',
-        'Data/C.csv',
-        'Data/CRM.csv',
-        'Data/CVX.csv',
-        'Data/GOOGL.csv',
-        'Data/GS.csv',
-        'Data/INTC.csv',
-        'Data/JNJ.csv',
-        'Data/JPM.csv',
-        'Data/MA.csv',
-        'Data/META.csv',
-        'Data/MS.csv',
-        'Data/MSFT.csv',
-        'Data/TSLA.csv',
-        'Data/V.csv',
-        'Data/WMT.csv',
+        os.path.join(data_dir, file) 
+        for file in os.listdir(data_dir) 
+        if file.endswith('.csv')
     ]
     create_combined_csv(ticker_paths)
