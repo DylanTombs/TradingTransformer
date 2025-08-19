@@ -239,7 +239,7 @@ class RsiEmaStrategy(bt.Strategy):
 
                 if self.uncertainty < 0.01:
                     if rsi < self.p.rsi_buy and self.prediction > currentPrice * self.p.buy_threshold and self.getposition().size == 0:
-                        self.buy(size=10)
+                        self.order_target_percent(target=0.90)
                     elif rsi > self.p.rsi_sell and self.prediction < currentPrice * self.p.sell_threshold and self.getposition().size > 0:
                         self.close()
 
