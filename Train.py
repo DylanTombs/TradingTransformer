@@ -35,20 +35,20 @@ def setupArgs():
     args.encIn = len([args.target]) + len(args.auxilFeatures)
     args.decIn = args.encIn
     args.cOut = 1
-    args.dModel = 512
-    args.nHeads = 8
+    args.dModel = 320
+    args.nHeads = 4
     args.eLayers = 3
     args.dLayers = 2
-    args.dFf = 1024
+    args.dFf = 512
     args.factor = 1
     args.dropout = 0.1
     
     # Optimization parameters
     args.numWorkers = 0
     args.itr = 1
-    args.trainEpochs = 100
+    args.trainEpochs = 80
     args.batchSize = 128
-    args.patience = 15
+    args.patience = 10
     args.learningRate = 0.001
     
     args.devices = '0,1,2,3'
