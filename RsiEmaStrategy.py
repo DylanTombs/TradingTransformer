@@ -41,7 +41,7 @@ class RsiEmaStrategy(bt.Strategy):
     
         self.model = Model_Interface(args)
 
-        modelPath = os.path.join(args.checkpoints, 'checkpoint.pth')
+        modelPath = os.path.join(args.checkpoints, 'Model1.pth')
         self.model.model.load_state_dict(torch.load(modelPath))
         self.model.model.eval()
 
@@ -237,11 +237,34 @@ class RsiEmaStrategy(bt.Strategy):
 
                 currentPrice = self.data.close[0]
 
-                if self.uncertainty < 0.01:
-                    if rsi < self.p.rsi_buy and self.prediction > currentPrice * self.p.buy_threshold and self.getposition().size == 0:
-                        self.order_target_percent(target=0.90)
-                    elif rsi > self.p.rsi_sell and self.prediction < currentPrice * self.p.sell_threshold and self.getposition().size > 0:
-                        self.close()
+                current_position = self.getposition().size
+
+                confidence_factor = max(0, 1 - (self.uncertainty / (currentPrice * 0.05)))
+                position_size = min(0.90, 0.90 * confidence_factor)
+
+                if self.uncertainty < 0.02:  
+                    if rsi < self.p.rsi_buy and self.prediction > currentPrice * self.p.buy_threshold:
+                        if current_position == 0:
+                            self.order_target_percent(target=position_size)
+                        elif confidence_factor > 0.8:
+                            self.order_target_percent(target=min(0.90, current_position + position_size * 0.3))
+
+                if current_position > 0:
+                    sell_confidence = 1 - (self.uncertainty / (currentPrice * 0.03)) 
+
+                    if rsi > self.p.rsi_sell and self.prediction < currentPrice * self.p.sell_threshold:
+                        if self.uncertainty < 0.01: 
+                            self.close()  
+                        elif self.uncertainty < 0.03: 
+                            close_percent = 0.5 + (0.25 * min(1, sell_confidence))
+                            close_amount = current_position * close_percent
+                            self.order_target_percent(target=current_position - close_amount)
+                        elif self.uncertainty < 0.05: 
+                            self.order_target_percent(target=current_position * 0.75)
+
+                    elif self.uncertainty > 0.06:
+                        self.order_target_percent(target=current_position * 0.5)
+
 
             except Exception as e:
                 pass
