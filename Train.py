@@ -29,27 +29,27 @@ def setupArgs():
     # Forecasting task parameters
     args.seqLen = 30
     args.labelLen = 10
-    args.predLen = 5
+    args.predLen = 1
     
     # Model architecture
     args.encIn = len([args.target]) + len(args.auxilFeatures)
     args.decIn = args.encIn
     args.cOut = 1
-    args.dModel = 256
-    args.nHeads = 4
-    args.eLayers = 2
-    args.dLayers = 1
-    args.dFf = 256
+    args.dModel = 512
+    args.nHeads = 8
+    args.eLayers = 3
+    args.dLayers = 2
+    args.dFf = 1024
     args.factor = 1
-    args.dropout = 0.05
+    args.dropout = 0.1
     
     # Optimization parameters
     args.numWorkers = 0
     args.itr = 1
     args.trainEpochs = 100
     args.batchSize = 128
-    args.patience = 10
-    args.learningRate = 0.0005
+    args.patience = 15
+    args.learningRate = 0.001
     
     args.devices = '0,1,2,3'
     args.seed = 1234

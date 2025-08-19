@@ -4,3 +4,6 @@
 2025-08-16 22:19:26,783 - INFO - Train steps per epoch: 1488
 2025-08-17 19:56:57,693 - INFO - Starting training loop...
 2025-08-17 19:56:57,693 - INFO - Train steps per epoch: 1808
+2025-08-19 09:49:37,694 - INFO - Starting training loop...
+2025-08-19 09:49:37,695 - INFO - Train steps per epoch: 122
+2025-08-19 09:59:58,857 - INFO - Iter 100/122, Epoch 1/100 | Loss: 0.9714829 | Speed: 6.2215s/iter | ETA: 1254.77 min
