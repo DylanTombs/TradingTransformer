@@ -35,7 +35,7 @@ def setupArgs():
     args.encIn = len([args.target]) + len(args.auxilFeatures)
     args.decIn = args.encIn
     args.cOut = 1
-    args.dModel = 320
+    args.dModel = 256
     args.nHeads = 4
     args.eLayers = 3
     args.dLayers = 2
@@ -49,7 +49,7 @@ def setupArgs():
     args.trainEpochs = 80
     args.batchSize = 128
     args.patience = 10
-    args.learningRate = 0.001
+    args.learningRate = 0.0005
     
     args.devices = '0,1,2,3'
     args.seed = 1234
