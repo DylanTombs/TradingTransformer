@@ -41,7 +41,7 @@ class RsiEmaStrategy(bt.Strategy):
     
         self.model = Model_Interface(args)
 
-        modelPath = os.path.join(args.checkpoints, 'Model1.pth')
+        modelPath = os.path.join(args.checkpoints, 'Model3.pth')
         self.model.model.load_state_dict(torch.load(modelPath))
         self.model.model.eval()
 
@@ -66,12 +66,12 @@ class RsiEmaStrategy(bt.Strategy):
         args.decIn = args.encIn
         args.cOut = 1
         args.dModel = 256
-        args.nHeads = 4
-        args.eLayers = 2
-        args.dLayers = 1
-        args.dFf = 256
+        args.nHeads = 8
+        args.eLayers = 3
+        args.dLayers = 2
+        args.dFf = 512
         args.factor = 1
-        args.dropout = 0.05
+        args.dropout = 0.1
 
         args.num_workers = 0
         args.itr = 1
@@ -233,7 +233,8 @@ class RsiEmaStrategy(bt.Strategy):
 
                 preds = np.array(preds)
                 self.prediction = preds.mean()
-                self.uncertainty = preds.std()
+                rmse_benchmark = 0.05
+                self.uncertainty = preds.std() / rmse_benchmark
 
                 currentPrice = self.data.close[0]
 
@@ -242,27 +243,27 @@ class RsiEmaStrategy(bt.Strategy):
                 confidence_factor = max(0, 1 - (self.uncertainty / (currentPrice * 0.05)))
                 position_size = min(0.90, 0.90 * confidence_factor)
 
-                if self.uncertainty < 0.02:  
+                if self.uncertainty < 0.8:  
                     if rsi < self.p.rsi_buy and self.prediction > currentPrice * self.p.buy_threshold:
                         if current_position == 0:
                             self.order_target_percent(target=position_size)
-                        elif confidence_factor > 0.8:
+                        elif confidence_factor > 0.7:
                             self.order_target_percent(target=min(0.90, current_position + position_size * 0.3))
 
                 if current_position > 0:
                     sell_confidence = 1 - (self.uncertainty / (currentPrice * 0.03)) 
 
                     if rsi > self.p.rsi_sell and self.prediction < currentPrice * self.p.sell_threshold:
-                        if self.uncertainty < 0.01: 
+                        if self.uncertainty < 0.6: 
                             self.close()  
-                        elif self.uncertainty < 0.03: 
+                        elif self.uncertainty < 1.0: 
                             close_percent = 0.5 + (0.25 * min(1, sell_confidence))
                             close_amount = current_position * close_percent
                             self.order_target_percent(target=current_position - close_amount)
-                        elif self.uncertainty < 0.05: 
+                        elif self.uncertainty < 1.4: 
                             self.order_target_percent(target=current_position * 0.75)
 
-                    elif self.uncertainty > 0.06:
+                    elif self.uncertainty > 1.8:
                         self.order_target_percent(target=current_position * 0.5)
 
 

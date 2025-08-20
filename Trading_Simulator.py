@@ -113,7 +113,7 @@ class StrategyEvaluator(bt.Analyzer):
         return flagged
 
 def RunSimulation(strategy, symbol_files, cash=1000, saveResults = True):
-    results_dir = 'Results/Results4'
+    results_dir = 'Results/Results5'
     results_summary = []
     all_equity = {}
     all_trades = []
