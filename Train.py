@@ -29,13 +29,13 @@ def setupArgs():
     # Forecasting task parameters
     args.seqLen = 30
     args.labelLen = 10
-    args.predLen = 1
+    args.predLen = 5
     
     # Model architecture
     args.encIn = len([args.target]) + len(args.auxilFeatures)
     args.decIn = args.encIn
     args.cOut = 1
-    args.dModel = 256
+    args.dModel = 512
     args.nHeads = 4
     args.eLayers = 3
     args.dLayers = 2
