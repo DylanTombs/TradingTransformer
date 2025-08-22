@@ -22,6 +22,7 @@ class RsiEmaStrategy(bt.Strategy):
         ('sell_threshold', 0.995),
         ('rsi_buy', 40),
         ('rsi_sell', 60),
+        ('buy_uncertainty', 0.08)
     )
 
     def __init__(self):
@@ -233,43 +234,52 @@ class RsiEmaStrategy(bt.Strategy):
 
                 preds = np.array(preds)
                 self.prediction = preds.mean()
-                rmse_benchmark = 0.05
-                self.uncertainty = preds.std() / rmse_benchmark
 
                 currentPrice = self.data.close[0]
-
                 current_position = self.getposition().size
+                entry_price = self.getposition().price if current_position > 0 else None
 
-                confidence_factor = max(0, 1 - (self.uncertainty / (currentPrice * 0.05)))
-                position_size = min(0.90, 0.90 * confidence_factor)
+                # Core trading metrics (no ML uncertainty)
+                rsi_oversold = rsi < self.p.rsi_buy  # e.g., 30
+                rsi_overbought = rsi > self.p.rsi_sell  # e.g., 70
 
-                if self.uncertainty < 0.8:  
-                    if rsi < self.p.rsi_buy and self.prediction > currentPrice * self.p.buy_threshold:
-                        if current_position == 0:
-                            self.order_target_percent(target=position_size)
-                        elif confidence_factor > 0.7:
-                            self.order_target_percent(target=min(0.90, current_position + position_size * 0.3))
+                # Price action signals
+                price_above_prediction = self.prediction > currentPrice * self.p.buy_threshold
+                price_below_prediction = self.prediction < currentPrice * self.p.sell_threshold
 
+                # Momentum confirmation
+                recent_low = currentPrice == min(self.data.close.get(size=5))  # 5-period low
+                recent_high = currentPrice == max(self.data.close.get(size=5))  # 5-period high
+
+
+                # Entry: Buy dips in uptrend
+                if current_position == 0:
+                    if (rsi_oversold and price_above_prediction) or recent_low:
+                        self.order_target_percent(target=0.90)
+
+                # Scale in: Add on continued weakness with strong signal
+                elif current_position < 0.90:
+                    if rsi < 25 and price_above_prediction:  # Deeper dip
+                        self.order_target_percent(target=0.90)
+
+                # Exit: Sell peaks or trend reversal
                 if current_position > 0:
-                    sell_confidence = 1 - (self.uncertainty / (currentPrice * 0.03)) 
+                    # Full exit on overbought + prediction reversal
+                    if rsi_overbought and price_below_prediction:
+                        self.close()
 
-                    if rsi > self.p.rsi_sell and self.prediction < currentPrice * self.p.sell_threshold:
-                        if self.uncertainty < 0.6: 
-                            self.close()  
-                        elif self.uncertainty < 1.0: 
-                            close_percent = 0.5 + (0.25 * min(1, sell_confidence))
-                            close_amount = current_position * close_percent
-                            self.order_target_percent(target=current_position - close_amount)
-                        elif self.uncertainty < 1.4: 
-                            self.order_target_percent(target=current_position * 0.75)
-
-                    elif self.uncertainty > 1.8:
+                    # Partial profit taking on recent highs
+                    elif recent_high and rsi > 60:
                         self.order_target_percent(target=current_position * 0.5)
+
+                    # Stop loss: prediction significantly wrong
+                    elif currentPrice < entry_price * 0.95:  # 5% stop loss
+                        self.close()
+
 
 
             except Exception as e:
-                pass
-                print(f"Prediction error: {str(e)}")
+                print(f"Error: {e}")
 
     def calculateMacd(self):
         if len(self.data) < 26:

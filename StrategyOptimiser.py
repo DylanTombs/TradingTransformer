@@ -10,7 +10,7 @@ import hashlib
 from RsiEmaStrategy import RsiEmaStrategy  # Ensure path is correct
 
 # === CONFIG ===
-TICKERS = ['PEP', 'BX', 'ASML', 'UNH']
+TICKERS = ['PEP', 'BX', 'ASML', 'UNH','KDP']
 RESULTS_CSV = Path("experiment_results.csv")
 SEED = 42
 
@@ -88,15 +88,16 @@ def save_trial_results(trial, mean_sharpe, per_ticker_df):
 
 def objective(trial):
     params = {
-        "emaPeriod": trial.suggest_int("emaPeriod", 5, 30),
-        "rsiPeriod": trial.suggest_int("rsiPeriod", 7, 21),
+        "emaPeriod": 10,
+        "rsiPeriod": 14,
         "seqLen": 30,
         "labelLen": 10,
         "predLen": 5,
-        "buy_threshold": trial.suggest_float("buy_threshold", 1.002, 1.015),
-        "sell_threshold": trial.suggest_float("sell_threshold", 0.985, 0.998),
-        "rsi_buy": trial.suggest_int("rsi_buy", 30, 50),
-        "rsi_sell": trial.suggest_int("rsi_sell", 50, 70),
+        "buy_threshold": 1.005,
+        "sell_threshold": 0.995,
+        "rsi_buy": 40,
+        "rsi_sell": 60,
+        "buy_uncertainty": trial.suggest_float("buy_uncertainty",0.05,0.1)
     }
 
     try:

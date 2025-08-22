@@ -140,7 +140,8 @@ def RunSimulation(strategy, symbol_files, cash=1000, saveResults = True):
         cerebro.broker.set_cash(cash)
     
     # Add analyzers
-        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
+        cerebro.addanalyzer(bt.analyzers.SharpeRatio_A, _name='sharpe')
+        cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='timereturn')
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
         cerebro.addanalyzer(StrategyEvaluator, _name='custom_metrics')
 
@@ -332,10 +333,8 @@ def create_aggregate_plots(df_results, all_equity, all_trades, save_results, res
 
 symbol_files = [
     'PEP.csv',
-    'BX.csv',
     'ASML.csv',
     'UNH.csv',
-    'KDP.csv',
 ]
 
 RunSimulation(RsiEmaStrategy, symbol_files)
