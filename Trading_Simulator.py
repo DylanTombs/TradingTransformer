@@ -6,6 +6,7 @@ import seaborn as sns
 
 import os
 from RsiEmaStrategy import RsiEmaStrategy  
+from RsiPortfolioStrategy import RsiPortfolioStrategy
 
 
 class StrategyEvaluator(bt.Analyzer):
@@ -113,13 +114,13 @@ class StrategyEvaluator(bt.Analyzer):
         return flagged
 
 def RunSimulation(strategy, symbol_files, cash=1000, saveResults = True):
-    results_dir = 'Results/Results5'
+    results_dir = 'Results/Results6'
     results_summary = []
     all_equity = {}
     all_trades = []
     for symbol_file in symbol_files:
 
-        symbol = symbol_file.replace('.csv', '')
+        symbol = symbol = os.path.basename(symbol_file).replace('.csv', '')
         data = pd.read_csv(symbol_file)
         data['date'] = pd.to_datetime(data['date'])
         data.set_index('date', inplace=True)
@@ -171,33 +172,30 @@ def RunSimulation(strategy, symbol_files, cash=1000, saveResults = True):
                 trade['symbol'] = symbol
                 all_trades.append(trade)
 
-        fig = cerebro.plot(style='candlestick', iplot=False)[0][0]
-        plt.title(f'{symbol} - Strategy')
         
         if saveResults:
+            fig = cerebro.plot(style='candlestick', iplot=False)[0][0]
+            plt.title(f'{symbol} - Strategy')
+            fig = cerebro.plot(style='candlestick', iplot=False)[0][0]
+            plt.title(f'{symbol} - Strategy')
             plot_path = os.path.join(results_dir, f'{symbol}_Strategy.png')
             fig.savefig(plot_path)
             plt.close(fig)
-        else:
-            plt.show()
         
-        equity = strat.analyzers.custom_metrics.values  # or cerebro.run()[0].equity_curve
+            equity = strat.analyzers.custom_metrics.values  # or cerebro.run()[0].equity_curve
 
-        plt.figure(figsize=(10, 5))
-        plt.plot(equity, label='Equity Curve')
-        plt.title('Equity Curve')
-        plt.xlabel('Bar Number')
-        plt.ylabel('Portfolio Value')
-        plt.grid(True)
-        plt.legend()
-        plt.tight_layout()
+            plt.figure(figsize=(10, 5))
+            plt.plot(equity, label='Equity Curve')
+            plt.title('Equity Curve')
+            plt.xlabel('Bar Number')
+            plt.ylabel('Portfolio Value')
+            plt.grid(True)
+            plt.legend()
+            plt.tight_layout()
         
-        if saveResults:
             plot_path = os.path.join(results_dir, f'{symbol}_Equity_Curve.png')
             plt.savefig(plot_path)
             plt.close(fig)
-        else:
-            plt.show()
         
         # Store equity data for aggregate plots
         equity_data = pd.DataFrame({
@@ -226,14 +224,92 @@ def RunSimulation(strategy, symbol_files, cash=1000, saveResults = True):
     df_results = pd.DataFrame(results_summary)
     df_results = df_results.sort_values(by='Total Return %', ascending=False)
 
-    if saveResults:
-        results_file = os.path.join(results_dir, f'strategy_results1.csv')
-        df_results.to_csv(results_file, index=False)
-        print(f"\nSaved results to {results_file}")
+    
+    results_file = os.path.join(results_dir, f'strategy_results1.csv')
+    df_results.to_csv(results_file, index=False)
+    print(f"\nSaved results to {results_file}")
 
     create_aggregate_plots(df_results, all_equity, all_trades, saveResults, results_dir)
     
     return df_results, all_equity, all_trades
+
+def RunPortfolioSimulation(strategy, symbol_files, cash=100000, saveResults=True):
+
+    results_dir = 'Results/Results6'
+    os.makedirs(results_dir, exist_ok=True)
+
+    cerebro = bt.Cerebro()
+    cerebro.broker.set_cash(cash)
+
+    # Optional but recommended: model some friction
+    #cerebro.broker.setcommission(commission=0.0005)  # 5 bps per side
+    # If you want slippage modeling, add a slippage scheme here.
+
+    # Load all symbols into one broker
+    for symbol_file in symbol_files:
+        symbol = symbol_file.replace('.csv', '')
+        data = pd.read_csv(symbol_file)
+        data['date'] = pd.to_datetime(data['date'])
+        data.set_index('date', inplace=True)
+
+        datafeed = bt.feeds.PandasData(
+            dataname=data,
+            datetime=None,
+            open='open', high='high', low='low', close='close',
+            volume='volume', openinterest=-1
+        )
+        cerebro.adddata(datafeed, name=symbol)
+
+    # One strategy trading all data feeds simultaneously
+    cerebro.addstrategy(strategy)
+
+    # Portfolio-level analyzers
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio_A, _name='sharpe')   # annualized Sharpe
+    cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='timereturn')  # equity curve returns
+    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')      # portfolio drawdown
+    cerebro.addanalyzer(StrategyEvaluator, _name='custom_metrics')    # your custom trade stats
+
+    startVal = cerebro.broker.getvalue()
+    results = cerebro.run()
+    strat = results[0]
+    endVal = cerebro.broker.getvalue()
+
+    sharpe = strat.analyzers.sharpe.get_analysis()
+    drawdown = strat.analyzers.drawdown.get_analysis()
+    custom = strat.analyzers.custom_metrics.get_analysis()
+
+    summary = {
+        'Start Value': startVal,
+        'End Value': endVal,
+        'Total Return %': (endVal / startVal - 1) * 100,
+        'Sharpe Ratio': sharpe.get('sharperatio', 0.0),
+        'Max Drawdown %': drawdown['max']['drawdown'],
+        'Win Rate %': custom['win_rate'],
+        'Profit Factor': custom['profit_factor'],
+        'Avg R/R': custom['avg_risk_reward'],
+    }
+    df_results = pd.DataFrame([summary])
+
+    # Portfolio equity curve from your analyzer
+    plt.figure(figsize=(12, 6))
+    plt.plot(strat.analyzers.custom_metrics.values, label="Portfolio Equity")
+    plt.title("Portfolio Equity Curve")
+    plt.xlabel("Bars")
+    plt.ylabel("Portfolio Value")
+    plt.grid(True)
+    plt.legend()
+
+    if saveResults:
+        plt.savefig(os.path.join(results_dir, "portfolio_equity.png"))
+        plt.close()
+        df_results.to_csv(os.path.join(results_dir, "portfolio_results.csv"), index=False)
+    else:
+        plt.show()
+
+    print("\nPortfolio Results:")
+    print(df_results)
+
+    return df_results, strat
 
 def create_aggregate_plots(df_results, all_equity, all_trades, save_results, results_dir):
     """Create various aggregate plots for strategy analysis"""
@@ -332,9 +408,12 @@ def create_aggregate_plots(df_results, all_equity, all_trades, save_results, res
                 plt.show()
 
 symbol_files = [
-    'PEP.csv',
-    'ASML.csv',
-    'UNH.csv',
-]
+        "BackTesting/ASML.csv",
+        "BackTesting/UNH.csv",
+        "BackTesting/DFS.csv",
+        "BackTesting/PEP.csv",
+        "BackTesting/LMT.csv",
+    ]
 
-RunSimulation(RsiEmaStrategy, symbol_files)
+#RunSimulation(RsiEmaStrategy, symbol_files)
+RunSimulation(RsiEmaStrategy, symbol_files, saveResults=True)

@@ -11,7 +11,7 @@ import numpy as np
 from argparse import Namespace as dotdict
 
 
-class RsiEmaStrategy(bt.Strategy):
+class RsiPortfolioStrategy(bt.Strategy):
     params = (
         ('emaPeriod', 10),
         ('rsiPeriod', 14),
@@ -22,13 +22,28 @@ class RsiEmaStrategy(bt.Strategy):
         ('sell_threshold', 0.995),
         ('rsi_buy', 40),
         ('rsi_sell', 60),
-        ('buy_uncertainty', 0.08)
+        ('buy_uncertainty', 0.08),
+        ('max_positions', 5),
+        ('position_size', 0.20)
     )
 
     def __init__(self):
-        self.ema = bt.indicators.EMA(self.data.close, period=self.p.emaPeriod)
-        self.rsi = bt.indicators.RSI(self.data.close, period=self.p.rsiPeriod)
-        self.buffer = []
+        # Create separate indicators, buffers, and predictions for each stock
+        self.emas = {}
+        self.rsis = {}
+        self.buffers = {}
+        self.predictions = {}
+        self.stock_names = {}
+        
+        # Initialize for each data feed
+        for i, data in enumerate(self.datas):
+            stock_name = getattr(data, '_name', f'STOCK_{i}')
+            self.stock_names[data] = stock_name
+            
+            self.emas[data] = bt.indicators.EMA(data.close, period=self.p.emaPeriod)
+            self.rsis[data] = bt.indicators.RSI(data.close, period=self.p.rsiPeriod)
+            self.buffers[data] = []
+            self.predictions[data] = 0
 
         self.columns = ['date', 'close', 'high','low','volume','adj close','P', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3','obv',
         'volume_zscore', 'rsi', 'macd','macds','macdh','sma','lma','sema','lema','overnight_gap',
@@ -46,8 +61,8 @@ class RsiEmaStrategy(bt.Strategy):
         self.model.model.load_state_dict(torch.load(modelPath))
         self.model.model.eval()
 
-        self.prediction = 0
-        self.uncertainty = 0
+        # Initialize per-stock OBV tracking
+        self.obvs = {}
 
     def setupArgs(self):
         args = dotdict()
@@ -93,16 +108,20 @@ class RsiEmaStrategy(bt.Strategy):
         minLookback = max(26, 20, 15, 6)
         totalRequired = self.p.seqLen + minLookback
 
-        if len(self.data) < totalRequired:
-            return
+        for data in self.datas:
+            if len(data) < totalRequired:
+                continue
+            
+            self.process_single_stock(data)
 
+    def process_single_stock(self, data):
         # Current bar values
-        current_date = self.data.datetime.date(0)
-        close = self.data.close[0]
-        high = self.data.high[0]
-        low = self.data.low[0]
-        open_price = self.data.open[0]
-        volume = self.data.volume[0]
+        current_date = data.datetime.date(0)
+        close = data.close[0]
+        high = data.high[0]
+        low = data.low[0]
+        open_price = data.open[0]
+        volume = data.volume[0]
 
         # Calculate Pivot Points
         P = (high + low + close) / 3
@@ -114,38 +133,38 @@ class RsiEmaStrategy(bt.Strategy):
         S3 = low - 2 * (high - P)
 
         # Calculate OBV
-        obv = self.calculateOBV()
+        obv = self.calculateOBV(data)
 
         # Calculate indicators
-        rsi = self.calculateRsi()
-        macd = self.calculateMacd()
-        volZ = self.calculateVolumeZscore()
-        vol = self.calculateVolatility()
-        overnightGap = self.calculateOvernightGap()
-        ret1 = self.calculateReturn(1)
-        ret3 = self.calculateReturn(3)
-        ret5 = self.calculateReturn(5)
+        rsi = self.calculateRsi(data)
+        macd = self.calculateMacd(data)
+        volZ = self.calculateVolumeZscore(data)
+        vol = self.calculateVolatility(data)
+        overnightGap = self.calculateOvernightGap(data)
+        ret1 = self.calculateReturn(1, data)
+        ret3 = self.calculateReturn(3, data)
+        ret5 = self.calculateReturn(5, data)
 
         # Calculate Stochastic RSI
-        SR_RSI_K, SR_RSI_D = self.calculateStochRSI(rsi)
+        SR_RSI_K, SR_RSI_D = self.calculateStochRSI(rsi, data)
 
         # Calculate regular Stochastic
-        SR_K, SR_D = self.calculateStochastic()
+        SR_K, SR_D = self.calculateStochastic(data)
 
         # Calculate moving averages
-        sma = self.calculateSMA(20)
-        lma = self.calculateSMA(50)
-        sema = self.calculateEMA(12)
-        lema = self.calculateEMA(26)
+        sma = self.calculateSMA(20, data)
+        lma = self.calculateSMA(50, data)
+        sema = self.calculateEMA(12, data)
+        lema = self.calculateEMA(26, data)
 
         # Calculate MACD components
-        macds = self.calculateMACDSignal()
+        macds = self.calculateMACDSignal(data)
         macdh = macd - macds if macds is not None else 0
 
         # Calculate other features
-        atr = self.calculateATR()
+        atr = self.calculateATR(data)
         HL_PCT = (high - low) / close * 100
-        PCT_CHG = self.calculatePctChange()
+        PCT_CHG = self.calculatePctChange(data)
 
         # Create feature row
         row = {
@@ -185,24 +204,22 @@ class RsiEmaStrategy(bt.Strategy):
             'ATR': atr, 
             'HL_PCT': HL_PCT, 
             'PCT_CHG': PCT_CHG,
-            'ticker':'PEP'
+            'ticker': self.stock_names[data]  # Use actual stock name
         }
 
         if any([v == 0.0 or pd.isna(v) for k, v in row.items() if k != 'open']):
             return
 
-        self.buffer.append(row)
-        if len(self.buffer) > self.p.seqLen:
-            self.buffer.pop(0)
+        # Use per-stock buffer
+        self.buffers[data].append(row)
+        if len(self.buffers[data]) > self.p.seqLen:
+            self.buffers[data].pop(0)
 
-        if len(self.buffer) == self.p.seqLen:
+        if len(self.buffers[data]) == self.p.seqLen:
             try:
-
-                
-                dfWindow = pd.DataFrame(self.buffer)[self.columns]
+                dfWindow = pd.DataFrame(self.buffers[data])[self.columns]
                 featureScaler = joblib.load(os.path.join(self.model.args.checkpoints, 'featureScaler.pkl'))
                 targetScaler = joblib.load(os.path.join(self.model.args.checkpoints, 'targetScaler.pkl'))
-                
                 
                 pred_data = DataFrameDataset(
                     df=dfWindow,  
@@ -212,7 +229,7 @@ class RsiEmaStrategy(bt.Strategy):
                     auxilFeatures=self.model.args.auxilFeatures,
                     featureScaler=featureScaler,  
                     targetScaler=targetScaler,
-                    stockColumn= 'ticker'
+                    stockColumn='ticker'
                 )
                 pred_loader = DataLoader(
                     pred_data,
@@ -233,120 +250,102 @@ class RsiEmaStrategy(bt.Strategy):
                             preds.append(pred[-1])
 
                 preds = np.array(preds)
-                self.prediction = preds.mean()
+                self.predictions[data] = preds.mean()  # Store per-stock prediction
 
-                currentPrice = self.data.close[0]
-                current_position = self.getposition().size
-                entry_price = self.getposition().price if current_position > 0 else None
+                currentPrice = data.close[0]
+                current_position = self.getposition(data).size  # Fixed: add data parameter
+                entry_price = self.getposition(data).price if current_position > 0 else None  # Fixed: add data parameter
 
-                # SIMPLE DRAWDOWN PROTECTION
-                if not hasattr(self, 'peak_value'):
-                    self.peak_value = self.broker.get_value()
-                
-                current_value = self.broker.get_value()
-                if current_value > self.peak_value:
-                    self.peak_value = current_value
-                
-                current_drawdown = (self.peak_value - current_value) / self.peak_value
-                
-                # Stop trading if drawdown too high
-                if current_drawdown > 0.25:  # 25% max drawdown
-                    if current_position > 0:
-                        self.close()
-                    return
+                # Use per-stock prediction
+                prediction = self.predictions[data]
 
                 # Core trading metrics (no ML uncertainty)
-                rsi_oversold = rsi < self.p.rsi_buy  # e.g., 30
-                rsi_overbought = rsi > self.p.rsi_sell  # e.g., 70
+                rsi_oversold = rsi < self.p.rsi_buy
+                rsi_overbought = rsi > self.p.rsi_sell
 
                 # Price action signals
-                price_above_prediction = self.prediction > currentPrice * self.p.buy_threshold
-                price_below_prediction = self.prediction < currentPrice * self.p.sell_threshold
+                price_above_prediction = prediction > currentPrice * self.p.buy_threshold
+                price_below_prediction = prediction < currentPrice * self.p.sell_threshold
 
                 # Momentum confirmation
-                recent_low = currentPrice == min(self.data.close.get(size=5))  # 5-period low
-                recent_high = currentPrice == max(self.data.close.get(size=5))  # 5-period high
+                recent_low = currentPrice == min(data.close.get(size=5))
+                recent_high = currentPrice == max(data.close.get(size=5))
 
-                # SMALLER POSITION SIZES (main change)
-                max_position = 0.40  # Reduced from 90% to 40%
+                # Portfolio constraint: count active positions
+                active_positions = sum(1 for d in self.datas if self.getposition(d).size > 0)
 
                 # Entry: Buy dips in uptrend
                 if current_position == 0:
-                    if (rsi_oversold and price_above_prediction) or recent_low:
-                        self.order_target_percent(target=0.20)  # Start smaller
+                    if ((rsi_oversold and price_above_prediction) or recent_low) and active_positions < self.p.max_positions:
+                        self.order_target_percent(data=data, target=self.p.position_size)
 
                 # Scale in: Add on continued weakness with strong signal
-                elif current_position < max_position:
-                    if rsi < (self.p.rsi_buy-15) and price_above_prediction:  # Deeper dip
-                        self.order_target_percent(target=max_position)
+                elif current_position < self.p.position_size * 0.9:
+                    if rsi < (self.p.rsi_buy-15) and price_above_prediction:
+                        self.order_target_percent(data=data, target=self.p.position_size)
 
                 # Exit: Sell peaks or trend reversal
                 if current_position > 0:
                     # Full exit on overbought + prediction reversal
                     if rsi_overbought and price_below_prediction:
-                        self.close()
+                        self.close(data=data)
 
                     # Partial profit taking on recent highs
                     elif recent_high and rsi > (self.p.rsi_sell - 5):
-                        self.order_target_percent(target=current_position * 0.5)
+                        self.order_target_percent(data=data, target=current_position * 0.5)
 
-                    # TIGHTER STOP LOSS
-                    elif currentPrice < entry_price * 0.97:  # 3% stop loss (was 5%)
-                        self.close()
+                    # Stop loss: prediction significantly wrong
+                    elif entry_price and currentPrice < entry_price * 0.95:
+                        self.close(data=data)
 
-                    # VOLATILITY STOP - exit if market gets too volatile
-                    elif vol > 0.05:  # Adjust this threshold based on your data
-                        self.order_target_percent(target=current_position * 0.5)  # Reduce position
-
-                    elif current_position == 0.5 and rsi < 45:  # Re-enter on dip after profit-taking
-                        self.order_target_percent(target=0.20)  # Smaller re-entry
-
+                    elif current_position < self.p.position_size * 0.6 and rsi < 45:
+                        self.order_target_percent(data=data, target=self.p.position_size)
 
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"Error processing {self.stock_names[data]}: {e}")
 
-    def calculateMacd(self):
-        if len(self.data) < 26:
+    def calculateMacd(self, data):
+        if len(data) < 26:
             return 0.0
-        closes = np.array([self.data.close[-i] for i in range(26)][::-1])
+        closes = np.array([data.close[-i] for i in range(26)][::-1])
         ema12 = closes[-12:].mean()
         ema26 = closes.mean()
         return ema12 - ema26
 
-    def calculateVolumeZscore(self):
-        if len(self.data) < 20:
+    def calculateVolumeZscore(self, data):
+        if len(data) < 20:
             return 0.0
-        volumes = np.array([self.data.volume[-i] for i in range(20)][::-1])
+        volumes = np.array([data.volume[-i] for i in range(20)][::-1])
         currentVolume = volumes[-1]
         meanVolume = volumes.mean()
         stdVolume = volumes.std() + 1e-6
         return (currentVolume - meanVolume) / stdVolume
 
-    def calculateVolatility(self):
-        if len(self.data) < 20:
+    def calculateVolatility(self, data):
+        if len(data) < 20:
             return 0.0
-        closes = np.array([self.data.close[-i] for i in range(20)][::-1])
+        closes = np.array([data.close[-i] for i in range(20)][::-1])
         returns = np.diff(closes) / closes[:-1]
         return returns.std()
 
-    def calculateOvernightGap(self):
-        if len(self.data) < 2:
+    def calculateOvernightGap(self, data):
+        if len(data) < 2:
             return 0.0
-        prevClose = self.data.close[-1]
-        currentOpen = self.data.open[0]
+        prevClose = data.close[-1]
+        currentOpen = data.open[0]
         return np.log(currentOpen / prevClose)
 
-    def calculateReturn(self, lag):
-        if len(self.data) < lag + 1:
+    def calculateReturn(self, lag, data):
+        if len(data) < lag + 1:
             return 0.0
-        currentClose = self.data.close[0]
-        pastClose = self.data.close[-lag]
+        currentClose = data.close[0]
+        pastClose = data.close[-lag]
         return (currentClose / pastClose) - 1
 
-    def calculateRsi(self):
-        if len(self.data) < 15:
+    def calculateRsi(self, data):
+        if len(data) < 15:
             return 0.0
-        closes = np.array([self.data.close[-i] for i in range(15)][::-1])
+        closes = np.array([data.close[-i] for i in range(15)][::-1])
         deltas = np.diff(closes)
         gains = deltas.clip(min=0)
         losses = -deltas.clip(max=0)
@@ -355,111 +354,120 @@ class RsiEmaStrategy(bt.Strategy):
         rs = avgGain / avgLoss
         return 100 - (100 / (1 + rs))
 
-    def calculateOBV(self):
-        if len(self.data) < 2:
-            return self.data.volume[0]
+    def calculateOBV(self, data):
+        if len(data) < 2:
+            if data not in self.obvs:
+                self.obvs[data] = data.volume[0]
+            return self.obvs[data]
 
-        prevClose = self.data.close[-1]
-        currentVolume = self.data.volume[0]
+        prevClose = data.close[-1]
+        currentVolume = data.volume[0]
 
-        if not hasattr(self, 'obv'):
-            self.obv = currentVolume
-            return self.obv
+        if data not in self.obvs:
+            self.obvs[data] = currentVolume
+            return self.obvs[data]
 
-        if self.data.close[0] > prevClose:
-            self.obv += currentVolume
-        elif self.data.close[0] < prevClose:
-            self.obv -= currentVolume
+        if data.close[0] > prevClose:
+            self.obvs[data] += currentVolume
+        elif data.close[0] < prevClose:
+            self.obvs[data] -= currentVolume
 
-        return self.obv
+        return self.obvs[data]
 
-    def calculateStochastic(self):
-        if len(self.data) < 14:
+    def calculateStochastic(self, data):
+        if len(data) < 14:
             return 50, 50
 
-        high_14 = max(self.data.high.get(size=14))
-        low_14 = min(self.data.low.get(size=14))
-        close = self.data.close[0]
+        high_14 = max(data.high.get(size=14))
+        low_14 = min(data.low.get(size=14))
+        close = data.close[0]
 
         SR_K = 100 * (close - low_14) / (high_14 - low_14 + 1e-10)
 
-        if not hasattr(self, 'SR_K_buffer'):
-            self.SR_K_buffer = []
+        stoch_buffer_key = f'SR_K_buffer_{id(data)}'
+        if not hasattr(self, stoch_buffer_key):
+            setattr(self, stoch_buffer_key, [])
 
-        self.SR_K_buffer.append(SR_K)
-        if len(self.SR_K_buffer) > 3:
-            self.SR_K_buffer.pop(0)
+        buffer = getattr(self, stoch_buffer_key)
+        buffer.append(SR_K)
+        if len(buffer) > 3:
+            buffer.pop(0)
 
-        SR_D = sum(self.SR_K_buffer) / len(self.SR_K_buffer) if self.SR_K_buffer else SR_K
+        SR_D = sum(buffer) / len(buffer) if buffer else SR_K
 
         return SR_K, SR_D
 
-    def calculateStochRSI(self, rsi):
-        if not hasattr(self, 'RSIBuffer'):
-            self.RSIBuffer = []
+    def calculateStochRSI(self, rsi, data):
+        rsi_buffer_key = f'RSIBuffer_{id(data)}'
+        if not hasattr(self, rsi_buffer_key):
+            setattr(self, rsi_buffer_key, [])
 
-        self.RSIBuffer.append(rsi)
-        if len(self.RSIBuffer) > 14:
-            self.RSIBuffer.pop(0)
+        buffer = getattr(self, rsi_buffer_key)
+        buffer.append(rsi)
+        if len(buffer) > 14:
+            buffer.pop(0)
 
-        if len(self.RSIBuffer) < 14:
+        if len(buffer) < 14:
             return 50, 50
 
-        rsi_high = max(self.RSIBuffer)
-        rsi_low = min(self.RSIBuffer)
+        rsi_high = max(buffer)
+        rsi_low = min(buffer)
 
         SR_RSI_K = 100 * (rsi - rsi_low) / (rsi_high - rsi_low + 1e-10)
 
-        if not hasattr(self, 'SR_RSI_K_buffer'):
-            self.SR_RSI_K_buffer = []
+        stoch_rsi_buffer_key = f'SR_RSI_K_buffer_{id(data)}'
+        if not hasattr(self, stoch_rsi_buffer_key):
+            setattr(self, stoch_rsi_buffer_key, [])
 
-        self.SR_RSI_K_buffer.append(SR_RSI_K)
-        if len(self.SR_RSI_K_buffer) > 3:
-            self.SR_RSI_K_buffer.pop(0)
+        stoch_buffer = getattr(self, stoch_rsi_buffer_key)
+        stoch_buffer.append(SR_RSI_K)
+        if len(stoch_buffer) > 3:
+            stoch_buffer.pop(0)
 
-        SR_RSI_D = sum(self.SR_RSI_K_buffer) / len(self.SR_RSI_K_buffer) if self.SR_RSI_K_buffer else SR_RSI_K
+        SR_RSI_D = sum(stoch_buffer) / len(stoch_buffer) if stoch_buffer else SR_RSI_K
 
         return SR_RSI_K, SR_RSI_D
 
-    def calculateSMA(self, period):
-        if len(self.data) < period:
-            return self.data.close[0]
-        return sum(self.data.close.get(size=period)) / period
+    def calculateSMA(self, period, data):
+        if len(data) < period:
+            return data.close[0]
+        return sum(data.close.get(size=period)) / period
     
-    def calculateEMA(self, span):
-        if not hasattr(self, f'ema_{span}'):
-            setattr(self, f'ema_{span}', self.data.close[0])
-            return self.data.close[0]
+    def calculateEMA(self, span, data):
+        ema_key = f'ema_{span}_{id(data)}'
+        if not hasattr(self, ema_key):
+            setattr(self, ema_key, data.close[0])
+            return data.close[0]
 
-        prevEMA = getattr(self, f'ema_{span}')
+        prevEMA = getattr(self, ema_key)
         alpha = 2 / (span + 1)
-        currentEMA = alpha * self.data.close[0] + (1 - alpha) * prevEMA
-        setattr(self, f'ema_{span}', currentEMA)
+        currentEMA = alpha * data.close[0] + (1 - alpha) * prevEMA
+        setattr(self, ema_key, currentEMA)
         return currentEMA
 
-    def calculateMACDSignal(self):
-        if len(self.data) < 26 + 9:
+    def calculateMACDSignal(self, data):
+        if len(data) < 26 + 9:
             return None
 
         MACDValues = []
         for i in range(9):
-            closes = np.array([self.data.close[-i-j] for j in range(26)][::-1])
+            closes = np.array([data.close[-i-j] for j in range(26)][::-1])
             ema12 = closes[-12:].mean()
             ema26 = closes.mean()
             MACDValues.append(ema12 - ema26)
 
         return sum(MACDValues) / len(MACDValues)
 
-    def calculateATR(self):
-        if len(self.data) < 14:
+    def calculateATR(self, data):
+        if len(data) < 14:
             return 0.0
 
         trueRanges = []
         for i in range(14):
-            currentHigh = self.data.high[-i]
-            currentLow = self.data.low[-i]
-            if i < len(self.data)-1:
-                prevClose = self.data.close[-i-1]
+            currentHigh = data.high[-i]
+            currentLow = data.low[-i]
+            if i < len(data)-1:
+                prevClose = data.close[-i-1]
             else:
                 prevClose = currentLow
 
@@ -470,7 +478,10 @@ class RsiEmaStrategy(bt.Strategy):
 
         return sum(trueRanges) / len(trueRanges)
 
-    def calculatePctChange(self):
-        if len(self.data) < 2:
+    def calculatePctChange(self, data):
+        if len(data) < 2:
             return 0.0
-        return (self.data.close[0] / self.data.close[-1] - 1) * 100
+        return (data.close[0] / data.close[-1] - 1) * 100
+
+
+
