@@ -5,7 +5,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import os
-from RsiEmaStrategy import RsiEmaStrategy  
+from Strategies.RsiEmaStrategy import RsiEmaStrategy
+from Strategies.MACDMomentumTrend import MacdMomentumTrend
+from Strategies.MeanReversion import MeanReversionSimple
+from Strategies.VWAPBreakout import VWAPBreakout
 from RsiPortfolioStrategy import RsiPortfolioStrategy
 
 
@@ -114,7 +117,7 @@ class StrategyEvaluator(bt.Analyzer):
         return flagged
 
 def RunSimulation(strategy, symbol_files, cash=1000, saveResults = True):
-    results_dir = 'Results/Results6'
+    results_dir = 'Results/VWAPStrat/Results1'
     results_summary = []
     all_equity = {}
     all_trades = []
@@ -415,5 +418,11 @@ symbol_files = [
         "BackTesting/LMT.csv",
     ]
 
+symbol_files = [
+    os.path.join("Backtesting/Volatile", file) 
+        for file in os.listdir("Backtesting/Volatile") 
+        if file.endswith('.csv')
+]
+
 #RunSimulation(RsiEmaStrategy, symbol_files)
-RunSimulation(RsiEmaStrategy, symbol_files, saveResults=True)
+RunSimulation(VWAPBreakout, symbol_files, saveResults=True)
