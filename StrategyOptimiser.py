@@ -10,7 +10,7 @@ import hashlib
 from RsiEmaStrategy import RsiEmaStrategy  # Ensure path is correct
 
 # === CONFIG ===
-TICKERS = ['PEP', 'BX', 'ASML', 'UNH','KDP']
+TICKERS = ['PEP','ASML', 'UNH']
 RESULTS_CSV = Path("experiment_results.csv")
 SEED = 42
 
@@ -20,7 +20,7 @@ random.seed(SEED)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 def load_data(ticker):
-    df = pd.read_csv(f"{ticker}.csv", index_col='date', parse_dates=True)
+    df = pd.read_csv(f"Backtesting/HighGrowth/{ticker}.csv", index_col='date', parse_dates=True)
     df = df.sort_index()
     return bt.feeds.PandasData(dataname=df)
 
@@ -53,7 +53,7 @@ def run_backtest(params, tickers):
         sharpe = result.analyzers.sharpe.get_analysis().get('sharperatio', np.nan)
         dd = result.analyzers.drawdown.get_analysis().get('max', {}).get('drawdown', np.nan)
         total_return = result.analyzers.returns.get_analysis().get('rnorm100', np.nan)
-
+        print(f"{ticker} Results: Sharpe: {sharpe} drawdown: {dd} return: {total_return}")
         results.append({
             "ticker": ticker,
             "sharpe": sharpe,
@@ -88,15 +88,15 @@ def save_trial_results(trial, mean_sharpe, per_ticker_df):
 
 def objective(trial):
     params = {
-        "emaPeriod": 10,
-        "rsiPeriod": 14,
+        "emaPeriod": trial.suggest_int("emaPeriod", 5,15),
+        "rsiPeriod": trial.suggest_int("rsiPeriod", 8,20),
         "seqLen": 30,
         "labelLen": 10,
         "predLen": 5,
-        "buy_threshold": 1.005,
-        "sell_threshold": 0.995,
-        "rsi_buy": 40,
-        "rsi_sell": 60,
+        "buy_threshold": trial.suggest_float("buy_threshold", 1,1.01),
+        "sell_threshold": trial.suggest_float("sell_threshold", 0.92,0.997),
+        "rsi_buy": trial.suggest_float("rsi_buy",35, 45),
+        "rsi_sell": trial.suggest_float("rsi_sell",55, 65),
         "buy_uncertainty": trial.suggest_float("buy_uncertainty",0.05,0.1)
     }
 
@@ -111,7 +111,7 @@ def objective(trial):
 
 if __name__ == "__main__":
     study = optuna.create_study(direction="maximize", study_name="RsiEma_OptStudy")
-    study.optimize(objective, n_trials=50, timeout=360000)
+    study.optimize(objective, n_trials=500, timeout=360000)
 
     print("\n=== BEST PARAMETERS ===")
     print(study.best_trial.params)
