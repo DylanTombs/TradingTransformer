@@ -66,13 +66,13 @@ class RsiEmaStrategy(bt.Strategy):
         args.encIn = len([args.target]) + len(args.auxilFeatures)
         args.decIn = args.encIn
         args.cOut = 1
-        args.dModel = 256
-        args.nHeads = 8
-        args.eLayers = 3
-        args.dLayers = 2
-        args.dFf = 512
-        args.factor = 1
-        args.dropout = 0.1
+        args.dModel = int(os.environ.get('DMODEL'))        
+        args.nHeads = int(os.environ.get('NHEADS'))      
+        args.eLayers = int(os.environ.get('ELAYERS'))       
+        args.dLayers = int(os.environ.get('DLAYERS'))        
+        args.dFf = int(os.environ.get('DFF'))              
+        args.factor = 1          # Default 1
+        args.dropout = float(os.environ.get('DROPOUT')) 
 
         args.num_workers = 0
         args.itr = 1
@@ -85,7 +85,7 @@ class RsiEmaStrategy(bt.Strategy):
         args.seed = 1234
 
         args.pHiddenDims = [128, 128]
-        args.pHiddenLayers = 2
+        args.pHiddenLayers = int(os.environ.get('PHIDDENLAYERS'))
 
         return args
 

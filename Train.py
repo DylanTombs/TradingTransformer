@@ -36,7 +36,7 @@ def setupArgs():
     args.decIn = args.encIn
     args.cOut = 1
     args.dModel = 512
-    args.nHeads = 8
+    args.nHeads = 8             #random attempt
     args.eLayers = 4
     args.dLayers = 3
     args.dFf = 1024

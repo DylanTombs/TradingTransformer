@@ -12,7 +12,7 @@ class PairsTradingETFs(bt.Strategy):
         priceSpread = self.calculateSpread()
         if priceSpread > self.zScore:
             self.buy(size=10)
-        else:                           # trailing stop implementation
+        else:                           # need to do trailing stop implementation
             self.close()
 
     def calculateZScore(self):
