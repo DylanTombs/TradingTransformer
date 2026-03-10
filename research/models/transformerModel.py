@@ -1,4 +1,4 @@
-from Transformer.Interface import Model_Interface
+from transformer.Interface import Model_Interface
 import torch
 
 class TransformerModel:

@@ -5,11 +5,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import os
-from Strategies.RsiEmaStrategy import RsiEmaStrategy
-from Strategies.MACDMomentumTrend import MacdMomentumTrend
-from Strategies.MeanReversion import MeanReversionSimple
-from Strategies.VWAPBreakout import VWAPBreakout
-from RsiPortfolioStrategy import RsiPortfolioStrategy
 
 
 class StrategyEvaluator(bt.Analyzer):
@@ -423,6 +418,3 @@ symbol_files = [
         for file in os.listdir("Backtesting/Volatile") 
         if file.endswith('.csv')
 ]
-
-#RunSimulation(RsiEmaStrategy, symbol_files)
-RunSimulation(VWAPBreakout, symbol_files, saveResults=True)
