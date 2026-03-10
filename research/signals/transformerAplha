@@ -1,0 +1,20 @@
+
+
+class TransformerAlpha:
+
+    def __init__(self, model):
+        self.model = model
+
+    def generate_signal(self, features):
+
+        prediction = self.model.predict(features)
+
+        current_price = features["close"].iloc[-1]
+
+        if prediction > current_price * 1.01:
+            return 1
+
+        if prediction < current_price * 0.99:
+            return -1
+
+        return 0
