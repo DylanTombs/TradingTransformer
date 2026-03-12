@@ -1,7 +1,7 @@
 #pragma once
 
 enum class EventType {
-    MARKET_DATA,
+    MARKET,
     SIGNAL,
     ORDER,
     FILL

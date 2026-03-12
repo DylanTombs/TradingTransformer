@@ -1,15 +1,17 @@
 #pragma once
 #include "./Events.hpp"
+#include <string>
 
 class MarketEvent : public Event {
 public:
+    std::string symbol;
     double price;
-    long timestamp;
+    std::string timestamp; 
 
-    MarketEvent(double price, long timestamp)
-        : price(price), timestamp(timestamp) {}
+    MarketEvent(const std::string& symbol, double price, const std::string& timestamp)
+        : symbol(symbol), price(price), timestamp(timestamp) {}
 
     EventType getType() const override {
-        return EventType::MARKET_DATA;
+        return EventType::MARKET;
     }
 };

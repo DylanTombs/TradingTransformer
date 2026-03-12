@@ -1,18 +1,30 @@
 #pragma once
-#include "./Events.hpp"
+
+#include "Events.hpp"
+#include <string>
 
 enum class SignalType {
     BUY,
-    SELL
+    SELL,
+    LONG,
+    SHORT,
+    EXIT
 };
 
 class SignalEvent : public Event {
-public:
-    SignalType signal;
-    double price;
 
-    SignalEvent(SignalType signal, double price)
-        : signal(signal), price(price) {}
+public:
+
+    std::string symbol;
+    SignalType signalType;
+    double strength;
+
+    SignalEvent(const std::string& symbol,
+                SignalType signalType,
+                double strength = 1.0)
+        : symbol(symbol),
+          signalType(signalType),
+          strength(strength) {}
 
     EventType getType() const override {
         return EventType::SIGNAL;

@@ -1,6 +1,6 @@
 #pragma once
-#include "../events/MarketEvent.hpp"
-#include "../events/EventQueue.hpp"
+#include "events/MarketEvent.hpp"
+#include "events/EventQueue.hpp"
 
 class Strategy {
 public:
