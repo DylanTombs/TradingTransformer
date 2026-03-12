@@ -239,10 +239,6 @@ def RunPortfolioSimulation(strategy, symbol_files, cash=100000, saveResults=True
     cerebro = bt.Cerebro()
     cerebro.broker.set_cash(cash)
 
-    # Optional but recommended: model some friction
-    #cerebro.broker.setcommission(commission=0.0005)  # 5 bps per side
-    # If you want slippage modeling, add a slippage scheme here.
-
     # Load all symbols into one broker
     for symbol_file in symbol_files:
         symbol = symbol_file.replace('.csv', '')
