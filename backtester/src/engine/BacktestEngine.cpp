@@ -34,8 +34,8 @@ void BacktestEngine::run() {
             auto marketEvent =
                 std::static_pointer_cast<MarketEvent>(event);
 
-            std::cout << "MARKET: " << marketEvent->timestamp 
-              << " close=" << marketEvent->price << std::endl;
+            portfolio.updateMarket(*marketEvent);
+
             strategy.onMarketEvent(*marketEvent, queue);
 
             break;
@@ -45,9 +45,6 @@ void BacktestEngine::run() {
 
             auto signal =
                 std::static_pointer_cast<SignalEvent>(event);
-
-            std::cout << "SIGNAL: " << signal->symbol 
-              << " type=" << (int)signal->signalType << std::endl;
 
             auto order = portfolio.generateOrder(*signal);
 
@@ -83,4 +80,8 @@ void BacktestEngine::run() {
 
         }
     }
+}
+
+Portfolio& BacktestEngine::getPortfolio() {
+    return portfolio;
 }
