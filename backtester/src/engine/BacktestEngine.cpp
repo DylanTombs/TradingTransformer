@@ -13,7 +13,8 @@ BacktestEngine::BacktestEngine(
     : strategy(strategy),
       dataHandler(dataHandler),
       portfolio(100000.0),     // starting capital
-      riskManager(1000) {}     // max position
+      riskManager(1000),
+      execution(1.0) {}     // max position
 
 
 void BacktestEngine::run() {

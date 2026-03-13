@@ -16,13 +16,15 @@ public:
     std::string symbol;
     OrderType orderType;
     int quantity;
+    double price;
 
     OrderEvent(const std::string& symbol,
                OrderType type,
-               int quantity)
+               int quantity, double price)
         : symbol(symbol),
           orderType(type),
-          quantity(quantity) {}
+          quantity(quantity),
+          price(price) {}
 
     EventType getType() const override {
         return EventType::ORDER;

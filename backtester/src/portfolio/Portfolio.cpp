@@ -21,17 +21,18 @@ void Portfolio::updateMarket(const MarketEvent& event) {
 OrderEvent Portfolio::generateOrder(const SignalEvent& signal) {
 
     int quantity = 10;
+    double price = latestPrices.count(signal.symbol) ? latestPrices[signal.symbol] : 0.0;
 
     if (signal.signalType == SignalType::LONG) {
-        return OrderEvent(signal.symbol, OrderType::BUY, quantity);
+        return OrderEvent(signal.symbol, OrderType::BUY, quantity, price);
     }
 
     if (signal.signalType == SignalType::SHORT) {
-        return OrderEvent(signal.symbol, OrderType::SELL, quantity);
+        return OrderEvent(signal.symbol, OrderType::SELL, quantity, price);
     }
 
     // EXIT or unknown → no order
-    return OrderEvent(signal.symbol, OrderType::BUY, 0);
+    return OrderEvent(signal.symbol, OrderType::BUY, 0, price);
 }
 
 double Portfolio::getCash() const {
