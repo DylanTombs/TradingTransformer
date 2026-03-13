@@ -20,14 +20,14 @@ int main() {
     std::cout << "Backtest complete." << std::endl;
 
     auto equity = engine.getPortfolio().getEquityCurve();
-
     if (equity.empty()) {
-    std::cout << "No equity data generated." << std::endl;
+        std::cout << "No equity data generated." << std::endl;
     } else {
-        std::cout << "Final equity: " << equity.back() << std::endl;
+        std::cout << "Final equity: " << std::get<1>(equity.back()) << std::endl;
     }
 
     engine.getPortfolio().exportEquityCurve("equity.csv");
+    engine.getPortfolio().exportTrades("trades.csv");
 
     return 0;
 }
