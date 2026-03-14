@@ -17,15 +17,15 @@ void MovingAverageStrategy::onMarketEvent(
         return;
 
     double avg = 0;
-
     for (double p : prices)
         avg += p;
-
     avg /= window;
 
-    if (event.price > avg) {
-        queue.push(std::make_shared<SignalEvent>(
-            event.symbol,
-            SignalType::BUY));
+    SignalType newSignal = (event.price > avg) ? SignalType::LONG : SignalType::SHORT;
+
+    // Only emit signal when it changes
+    if (newSignal != lastSignal) {
+        lastSignal = newSignal;
+        queue.push(std::make_shared<SignalEvent>(event.symbol, newSignal));
     }
 }

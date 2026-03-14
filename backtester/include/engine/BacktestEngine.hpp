@@ -28,4 +28,5 @@ public:
     );
 
     void run();
+    Portfolio& getPortfolio();
 };

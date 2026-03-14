@@ -5,7 +5,7 @@ SimulatedExecution::SimulatedExecution(double commission)
 
 FillEvent SimulatedExecution::executeOrder(const OrderEvent& order) {
 
-    double fillPrice = 100.0; // placeholder price for now
+    double fillPrice = order.price;
 
     int quantity = order.quantity;
 

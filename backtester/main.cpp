@@ -8,7 +8,7 @@ int main() {
 
     std::cout << "Starting backtest..." << std::endl;
 
-    CSVDataHandler data("backtester/data/AAPL.csv");
+    CSVDataHandler data("../backtester/data/AAPL.csv");
 
     MovingAverageStrategy strategy(5);
 
@@ -16,7 +16,18 @@ int main() {
 
     engine.run();
 
+
     std::cout << "Backtest complete." << std::endl;
+
+    auto equity = engine.getPortfolio().getEquityCurve();
+    if (equity.empty()) {
+        std::cout << "No equity data generated." << std::endl;
+    } else {
+        std::cout << "Final equity: " << std::get<1>(equity.back()) << std::endl;
+    }
+
+    engine.getPortfolio().exportEquityCurve("equity.csv");
+    engine.getPortfolio().exportTrades("trades.csv");
 
     return 0;
 }
