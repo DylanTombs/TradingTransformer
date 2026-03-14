@@ -390,16 +390,9 @@ def create_aggregate_plots(df_results, all_equity, all_trades, save_results, res
             else:
                 plt.show()
 
-symbol_files = [
-        "BackTesting/ASML.csv",
-        "BackTesting/UNH.csv",
-        "BackTesting/DFS.csv",
-        "BackTesting/PEP.csv",
-        "BackTesting/LMT.csv",
+if __name__ == "__main__":
+    symbol_files = [
+        os.path.join("Backtesting/Volatile", file)
+        for file in os.listdir("Backtesting/Volatile")
+        if file.endswith(".csv")
     ]
-
-symbol_files = [
-    os.path.join("Backtesting/Volatile", file) 
-        for file in os.listdir("Backtesting/Volatile") 
-        if file.endswith('.csv')
-]
