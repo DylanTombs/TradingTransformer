@@ -1,13 +1,6 @@
 """Unit tests for research/features/technicalIndicators.py.
 
-All indicator functions are implemented as methods that accept a strategy-like
-`self` object whose `self.data` attribute mimics the backtrader line series API:
-  - self.data.close[0]     → current bar value
-  - self.data.close[-n]    → n bars ago
-  - self.data.close.get(size=n) → list of last n values (oldest → newest)
-  - len(self.data)         → number of bars loaded
 
-MockLine and MockData replicate this contract without importing backtrader.
 """
 import math
 import numpy as np
@@ -25,9 +18,8 @@ from technicalIndicators import (
     calculatePctChange,
 )
 
-# ---------------------------------------------------------------------------
+
 # Backtrader data-feed mock
-# ---------------------------------------------------------------------------
 
 class MockLine:
     """Mimics a backtrader LineSeries.
@@ -71,9 +63,7 @@ class MockSelf:
         self.data = MockData(closes, volumes, highs, lows, opens)
 
 
-# ---------------------------------------------------------------------------
 # RSI tests
-# ---------------------------------------------------------------------------
 
 class TestCalculateRsi:
 
@@ -84,21 +74,20 @@ class TestCalculateRsi:
 
     def test_all_gains_returns_near_100(self):
         """Monotonically rising prices → RSI ≈ 100 (avgLoss ≈ 0)."""
-        prices = list(range(15))           # [0, 1, …, 14]
+        prices = list(range(15))  
         ctx = MockSelf(closes=prices)
         result = calculateRsi(ctx)
         assert result > 99.0, f"Expected RSI near 100, got {result}"
 
     def test_all_losses_returns_near_0(self):
         """Monotonically falling prices → RSI ≈ 0 (avgGain = 0)."""
-        prices = list(range(14, -1, -1))   # [14, 13, …, 0]
+        prices = list(range(14, -1, -1)) 
         ctx = MockSelf(closes=prices)
         result = calculateRsi(ctx)
         assert result < 1.0, f"Expected RSI near 0, got {result}"
 
     def test_equal_gains_and_losses_returns_50(self):
         """7 equal gains and 7 equal losses → RSI = 50."""
-        # Alternating: [0, 2, 0, 2, …, 0] — 15 values
         prices = [0.0 if i % 2 == 0 else 2.0 for i in range(15)]
         ctx = MockSelf(closes=prices)
         result = calculateRsi(ctx)
@@ -113,11 +102,6 @@ class TestCalculateRsi:
         assert 0.0 <= result <= 100.0
 
 
-# ---------------------------------------------------------------------------
-# MACD tests
-# NOTE: The implementation uses simple arithmetic means, not true EMA.
-# ---------------------------------------------------------------------------
-
 class TestCalculateMacd:
 
     def test_insufficient_data_returns_zero(self):
@@ -131,21 +115,16 @@ class TestCalculateMacd:
 
     def test_rising_prices_is_positive(self):
         """Recent prices higher than longer history → MACD > 0."""
-        ctx = MockSelf(closes=list(range(26)))  # [0, 1, …, 25]
-        # ema12 = mean([14..25]) = 19.5, ema26 = mean([0..25]) = 12.5
+        ctx = MockSelf(closes=list(range(26)))  
         result = calculateMacd(ctx)
         assert result == pytest.approx(7.0, abs=1e-9)
 
     def test_falling_prices_is_negative(self):
         """Recent prices lower than longer history → MACD < 0."""
-        ctx = MockSelf(closes=list(range(25, -1, -1)))  # [25, 24, …, 0]
+        ctx = MockSelf(closes=list(range(25, -1, -1))) 
         result = calculateMacd(ctx)
         assert result < 0.0
 
-
-# ---------------------------------------------------------------------------
-# Volatility tests
-# ---------------------------------------------------------------------------
 
 class TestCalculateVolatility:
 
@@ -160,17 +139,13 @@ class TestCalculateVolatility:
 
     def test_known_returns_std(self):
         """Manually verify std of log-returns against numpy reference."""
-        closes = [100.0 * (1.01 ** i) for i in range(20)]  # 1% daily gains
+        closes = [100.0 * (1.01 ** i) for i in range(20)] 
         ctx = MockSelf(closes=closes)
         arr = np.array(closes)
         returns = np.diff(arr) / arr[:-1]
         expected = returns.std()
         assert calculateVolatility(ctx) == pytest.approx(expected, rel=1e-6)
 
-
-# ---------------------------------------------------------------------------
-# Volume Z-score tests
-# ---------------------------------------------------------------------------
 
 class TestCalculateVolumeZscore:
 
@@ -187,14 +162,10 @@ class TestCalculateVolumeZscore:
 
     def test_high_volume_returns_positive_zscore(self):
         """Volume well above mean → positive z-score."""
-        volumes = [1_000.0] * 19 + [10_000.0]   # large spike on current bar
+        volumes = [1_000.0] * 19 + [10_000.0]  
         ctx = MockSelf(closes=[100.0] * 20, volumes=volumes)
         assert calculateVolumeZscore(ctx) > 1.0
 
-
-# ---------------------------------------------------------------------------
-# Overnight gap tests
-# ---------------------------------------------------------------------------
 
 class TestCalculateOvernightGap:
 
@@ -208,7 +179,7 @@ class TestCalculateOvernightGap:
     def test_gap_up_returns_positive(self):
         """Current open above previous close → positive gap."""
         closes = [100.0] * 5
-        opens = [100.0, 100.0, 100.0, 100.0, 110.0]  # current open = 110
+        opens = [100.0, 100.0, 100.0, 100.0, 110.0] 
         ctx = MockSelf(closes=closes, opens=opens)
         result = calculateOvernightGap(ctx)
         assert result == pytest.approx(math.log(110 / 100), rel=1e-6)
@@ -220,16 +191,11 @@ class TestCalculateOvernightGap:
         ctx = MockSelf(closes=closes, opens=opens)
         assert calculateOvernightGap(ctx) < 0.0
 
-
-# ---------------------------------------------------------------------------
-# Return lag tests
-# ---------------------------------------------------------------------------
-
 class TestCalculateReturn:
 
     def test_lag_1_known_value(self):
         """(current / 1-bar-ago) - 1 with known prices."""
-        closes = [100.0] * 4 + [110.0]   # current = 110, 1 bar ago = 100
+        closes = [100.0] * 4 + [110.0]  
         ctx = MockSelf(closes=closes)
         assert calculateReturn(ctx, lag=1) == pytest.approx(0.10, rel=1e-6)
 
@@ -238,24 +204,16 @@ class TestCalculateReturn:
         assert calculateReturn(ctx, lag=5) == pytest.approx(0.0, abs=1e-9)
 
 
-# ---------------------------------------------------------------------------
-# SMA tests
-# ---------------------------------------------------------------------------
-
 class TestCalculateSMA:
 
     def test_sma_equals_arithmetic_mean(self):
         """SMA over a window equals the arithmetic mean of that window."""
-        closes = list(range(1, 21))        # [1, 2, …, 20]
+        closes = list(range(1, 21))       
         ctx = MockSelf(closes=closes)
         result = calculateSMA(ctx, period=5)
-        expected = sum(range(16, 21)) / 5  # mean([16,17,18,19,20]) = 18.0
+        expected = sum(range(16, 21)) / 5  
         assert result == pytest.approx(expected, rel=1e-6)
 
-
-# ---------------------------------------------------------------------------
-# ATR tests
-# ---------------------------------------------------------------------------
 
 class TestCalculateATR:
 
@@ -274,14 +232,10 @@ class TestCalculateATR:
         assert calculateATR(ctx) == pytest.approx(4.0, rel=1e-6)
 
 
-# ---------------------------------------------------------------------------
-# Pct change tests
-# ---------------------------------------------------------------------------
-
 class TestCalculatePctChange:
 
     def test_known_pct_change(self):
-        closes = [100.0, 105.0]   # prev = 100, current = 105
+        closes = [100.0, 105.0]   
         ctx = MockSelf(closes=closes)
         assert calculatePctChange(ctx) == pytest.approx(5.0, rel=1e-6)
 

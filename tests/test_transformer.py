@@ -1,10 +1,4 @@
 """Unit tests for the Transformer model (research/transformer/Model.py).
-
-Tests verify:
-  - The model instantiates without error given valid config.
-  - The forward pass returns the correct output shape: (batch, pred_len, c_out).
-  - The model is deterministic in eval() mode (dropout disabled).
-  - Interface.predict() uses model.eval(), not model.train().
 """
 import inspect
 import pytest
@@ -14,10 +8,6 @@ from argparse import Namespace
 # conftest.py adds research/ to sys.path
 import transformer.Model as ModelModule
 
-
-# ---------------------------------------------------------------------------
-# Minimal model config
-# ---------------------------------------------------------------------------
 
 @pytest.fixture()
 def small_config():
@@ -41,15 +31,11 @@ def _make_inputs(batch: int, seq_len: int, label_len: int, pred_len: int,
                  n_features: int):
     """Return (enc_x, enc_mark, dec_x, dec_mark) random float tensors."""
     enc_x = torch.randn(batch, seq_len, n_features)
-    enc_mark = torch.randn(batch, seq_len, 3)           # month, day, weekday
+    enc_mark = torch.randn(batch, seq_len, 3)         
     dec_x = torch.randn(batch, label_len + pred_len, n_features)
     dec_mark = torch.randn(batch, label_len + pred_len, 3)
     return enc_x, enc_mark, dec_x, dec_mark
 
-
-# ---------------------------------------------------------------------------
-# Instantiation
-# ---------------------------------------------------------------------------
 
 class TestModelInstantiation:
 
@@ -61,11 +47,6 @@ class TestModelInstantiation:
         import torch.nn as nn
         model = ModelModule.Model(small_config)
         assert isinstance(model, nn.Module)
-
-
-# ---------------------------------------------------------------------------
-# Output shape
-# ---------------------------------------------------------------------------
 
 class TestForwardPassShape:
 
@@ -95,10 +76,6 @@ class TestForwardPassShape:
             output, attns = model(enc_x, enc_mark, dec_x, dec_mark)
         assert attns is not None
 
-
-# ---------------------------------------------------------------------------
-# Determinism / dropout behaviour
-# ---------------------------------------------------------------------------
 
 class TestModelDeterminism:
 

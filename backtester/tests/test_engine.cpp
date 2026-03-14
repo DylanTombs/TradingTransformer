@@ -1,13 +1,5 @@
 /**
  * Integration tests for BacktestEngine.
- *
- * Tests verify the full MARKET → SIGNAL → ORDER → FILL event loop by using
- * lightweight mock implementations of DataHandler and Strategy.  No real CSV
- * files or trained models are required.
- *
- * MockDataHandler: streams a fixed sequence of prices then stops.
- * AlwaysBuyStrategy: emits exactly one LONG signal on the first MARKET event.
- * NeverSignalStrategy: never emits a signal (verifies no-trade path).
  */
 #include <memory>
 #include <string>
@@ -21,9 +13,6 @@
 #include "events/MarketEvent.hpp"
 #include "events/SignalEvent.hpp"
 
-// ---------------------------------------------------------------------------
-// Mock implementations
-// ---------------------------------------------------------------------------
 
 class MockDataHandler : public DataHandler {
 public:
@@ -51,7 +40,6 @@ public:
     void onMarketEvent(const MarketEvent& event, EventQueue& queue) override {
         ++market_events_received;
         if (market_events_received == 1) {
-            // Emit exactly one LONG signal on the first bar
             queue.push(std::make_shared<SignalEvent>(event.symbol, SignalType::LONG));
         }
     }
@@ -62,13 +50,10 @@ public:
     void onMarketEvent(const MarketEvent&, EventQueue&) override {}
 };
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 TEST(BacktestEngineTest, EmptyDataStreamProducesNoTrades) {
     NeverSignalStrategy strategy;
-    MockDataHandler data("AAPL", {});    // zero prices
+    MockDataHandler data("AAPL", {});  
     BacktestEngine engine(strategy, data);
     engine.run();
     EXPECT_TRUE(engine.getPortfolio().getTrades().empty());
@@ -79,12 +64,10 @@ TEST(BacktestEngineTest, MarketEventsPopulateEquityCurve) {
     MockDataHandler data("AAPL", {100.0, 102.0, 104.0});
     BacktestEngine engine(strategy, data);
     engine.run();
-    // One equity-curve entry is added per MARKET event processed.
     EXPECT_EQ(engine.getPortfolio().getEquityCurve().size(), 3u);
 }
 
 TEST(BacktestEngineTest, LongSignalResultsInOpenPosition) {
-    // After one LONG signal the portfolio should hold the hardcoded 10 shares.
     AlwaysBuyStrategy strategy;
     MockDataHandler data("AAPL", {100.0, 102.0, 104.0});
     BacktestEngine engine(strategy, data);
@@ -94,7 +77,6 @@ TEST(BacktestEngineTest, LongSignalResultsInOpenPosition) {
 }
 
 TEST(BacktestEngineTest, FullBuyLoopDecreasesAvailableCash) {
-    // Buying 10 shares at 100 with 1.0 commission: cash must drop by 1001.
     AlwaysBuyStrategy strategy;
     MockDataHandler data("AAPL", {100.0, 102.0});
     BacktestEngine engine(strategy, data);
@@ -108,15 +90,10 @@ TEST(BacktestEngineTest, FullBuyLoopDecreasesAvailableCash) {
 }
 
 TEST(BacktestEngineTest, RiskManagerRejectsOversizedOrders) {
-    // BacktestEngine constructs RiskManager(1000) — max position size = 1000.
-    // Portfolio::generateOrder always issues quantity 10, which is well within
-    // the limit, so the order must be approved and the position filled.
-    // This test would catch a regression if the limit were set very low.
     AlwaysBuyStrategy strategy;
     MockDataHandler data("AAPL", {100.0});
     BacktestEngine engine(strategy, data);
     engine.run();
-    // Quantity 10 <= 1000 → risk manager approves → position is filled
     EXPECT_EQ(engine.getPortfolio().getPosition("AAPL"), 10);
 }
 

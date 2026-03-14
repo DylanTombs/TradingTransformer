@@ -1,13 +1,4 @@
 """Unit tests for research/transformer/DataFrame.py (DataFrameDataset).
-
-Covers:
-  - Correct window count for train/val/test splits
-  - Scaler fitted on train data only, not re-fitted on val/test
-  - Input validation (missing columns, NaN values, absent scalers)
-  - __getitem__ output shapes
-  - Known data leakage bug: windows can currently cross ticker boundaries
-    because valid_indices is computed but never used in __getitem__.
-    This test is marked xfail and will flip to xpass once the bug is fixed.
 """
 import numpy as np
 import pandas as pd
@@ -16,10 +7,6 @@ from sklearn.preprocessing import StandardScaler
 
 from DataFrame import DataFrameDataset
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 SEQ_LEN = 10
 LABEL_LEN = 5
@@ -51,10 +38,6 @@ def _make_train_scalers(df: pd.DataFrame):
     return fs, ts
 
 
-# ---------------------------------------------------------------------------
-# Window count
-# ---------------------------------------------------------------------------
-
 class TestWindowCount:
 
     def test_single_ticker_window_count_matches_formula(self):
@@ -74,9 +57,7 @@ class TestWindowCount:
         assert len(ds) == 1
 
 
-# ---------------------------------------------------------------------------
 # Scaler discipline
-# ---------------------------------------------------------------------------
 
 class TestScalerDiscipline:
 
@@ -109,9 +90,8 @@ class TestScalerDiscipline:
             DataFrameDataset(df, "val", SIZE, TARGET, AUX_FEATURES)
 
 
-# ---------------------------------------------------------------------------
+
 # Input validation
-# ---------------------------------------------------------------------------
 
 class TestInputValidation:
 
@@ -136,9 +116,7 @@ class TestInputValidation:
             DataFrameDataset("not_a_df", "train", SIZE, TARGET, AUX_FEATURES)
 
 
-# ---------------------------------------------------------------------------
 # Output shape
-# ---------------------------------------------------------------------------
 
 class TestOutputShape:
 
@@ -166,9 +144,7 @@ class TestOutputShape:
         assert seq_x_mark.shape == (SEQ_LEN, 3)
 
 
-# ---------------------------------------------------------------------------
-# Multi-ticker data leakage
-# ---------------------------------------------------------------------------
+
 
 class TestMultiTickerLeakage:
 
@@ -183,7 +159,7 @@ class TestMultiTickerLeakage:
         """Each window must contain data from exactly one ticker.
 
         With two tickers (20 rows each) and seqLen=10, predLen=3, a window
-        starting at index 12 spans rows 12–21, crossing the ticker boundary
+        starting at index 12 spans rows 12-21, crossing the ticker boundary
         at row 20.  The dataset should prevent this but currently does not.
         """
         n_per_ticker = 20

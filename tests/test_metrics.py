@@ -1,9 +1,4 @@
 """Unit tests for the StrategyEvaluator metric methods in Trading_Simulator.py.
-
-StrategyEvaluator's __init__ does not call super().__init__(), so it can be
-instantiated in isolation without a running backtrader cerebro context.
-Each test constructs a minimal instance, injects the state the method under
-test reads, and asserts the expected output.
 """
 import math
 import numpy as np
@@ -12,13 +7,6 @@ import pytest
 from Trading_Simulator import StrategyEvaluator
 
 
-# ---------------------------------------------------------------------------
-# Test-double: bt.Analyzer's metaclass requires a live cerebro/strategy
-# context at instantiation time, making direct unit testing impossible.
-# _IsolatedEvaluator is a plain Python class that binds all metric methods
-# from StrategyEvaluator so we can test the pure calculation logic without
-# spinning up a full backtrader run.
-# ---------------------------------------------------------------------------
 
 class _IsolatedEvaluator:
     """Minimal stand-in for StrategyEvaluator metric calculations."""
@@ -28,7 +16,6 @@ class _IsolatedEvaluator:
         self.trades = list(trades)
         self.trade_returns = [t["return"] for t in trades]
 
-    # Bind the exact calculation methods from the production class
     _calc_sharpe = StrategyEvaluator._calc_sharpe
     _calc_max_drawdown = StrategyEvaluator._calc_max_drawdown
     _calc_win_rate = StrategyEvaluator._calc_win_rate
@@ -45,10 +32,6 @@ def _trade(pnlcomm: float, ret: float, duration: int = 5) -> dict:
     return {"pnl": pnlcomm, "pnlcomm": pnlcomm, "duration": duration,
             "price": 100.0, "size": 10, "return": ret}
 
-
-# ---------------------------------------------------------------------------
-# Max Drawdown
-# ---------------------------------------------------------------------------
 
 class TestMaxDrawdown:
 
@@ -73,10 +56,6 @@ class TestMaxDrawdown:
         result = ev._calc_max_drawdown()
         assert result == pytest.approx(20.0, rel=1e-4)
 
-
-# ---------------------------------------------------------------------------
-# Win Rate
-# ---------------------------------------------------------------------------
 
 class TestWinRate:
 
@@ -111,10 +90,6 @@ class TestWinRate:
         assert ev._calc_win_rate() == pytest.approx(0.0)
 
 
-# ---------------------------------------------------------------------------
-# Profit Factor
-# ---------------------------------------------------------------------------
-
 class TestProfitFactor:
 
     def test_known_gross_profit_and_loss(self):
@@ -143,10 +118,6 @@ class TestProfitFactor:
         assert ev._calc_profit_factor() == float("inf")
 
 
-# ---------------------------------------------------------------------------
-# Sharpe Ratio
-# ---------------------------------------------------------------------------
-
 class TestSharpeRatio:
 
     def test_fewer_than_two_returns_gives_zero(self):
@@ -158,8 +129,6 @@ class TestSharpeRatio:
         returns = np.array([0.02, 0.02, 0.02, 0.02])
         ev = _make_evaluator(values=[100], trades=[])
         result = ev._calc_sharpe(returns)
-        # mean / 1e-9 * sqrt(252) would be huge — the function should handle
-        # this; in practice the 1e-9 stabiliser makes it large but finite.
         assert math.isfinite(result)
 
     def test_sharpe_matches_manual_formula(self):
@@ -173,11 +142,6 @@ class TestSharpeRatio:
         returns = np.array([0.01, 0.02, 0.015, 0.008, 0.012])
         ev = _make_evaluator(values=[100], trades=[])
         assert ev._calc_sharpe(returns) > 0.0
-
-
-# ---------------------------------------------------------------------------
-# Flag Bad Trades
-# ---------------------------------------------------------------------------
 
 class TestFlagBadTrades:
 
@@ -209,11 +173,6 @@ class TestFlagBadTrades:
         for i in flagged:
             assert returns[i] < threshold
 
-
-# ---------------------------------------------------------------------------
-# Avg Risk/Reward
-# ---------------------------------------------------------------------------
-
 class TestAvgRiskReward:
 
     def test_known_values(self):
@@ -221,9 +180,9 @@ class TestAvgRiskReward:
         ev = _make_evaluator(
             values=[100],
             trades=[
-                _trade(100, 0.10),   # win
-                _trade(50, 0.05),    # win  → avg_reward = 75
-                _trade(-25, -0.03),  # loss → avg_risk = 25
+                _trade(100, 0.10),  
+                _trade(50, 0.05),    
+                _trade(-25, -0.03), 
             ],
         )
         assert ev._calc_avg_risk_reward() == pytest.approx(3.0, rel=1e-4)
