@@ -227,7 +227,7 @@ class Model_Interface():
         print(f"Trained model loaded from {bestModelPath}")    
        
     def predict(self, seqX, seqXMark, seqYMark, load=False, setting=None, targetScaler=None):
-        self.model.train()
+        self.model.eval()
 
         if load and setting:
             path = os.path.join(self.args.checkpoints, setting)
