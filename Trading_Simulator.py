@@ -171,46 +171,35 @@ def RunSimulation(strategy, symbol_files, cash=1000, saveResults = True):
                 all_trades.append(trade)
 
         
+        equity_values = strat.analyzers.custom_metrics.values
+        equity_dates = data.index[-len(equity_values):]
+        equity_data = pd.DataFrame({
+            'Date': equity_dates,
+            'Equity': equity_values,
+            'Symbol': symbol
+        })
+        all_equity[symbol] = equity_data
+
         if saveResults:
-            fig = cerebro.plot(style='candlestick', iplot=False)[0][0]
-            plt.title(f'{symbol} - Strategy')
             fig = cerebro.plot(style='candlestick', iplot=False)[0][0]
             plt.title(f'{symbol} - Strategy')
             plot_path = os.path.join(results_dir, f'{symbol}_Strategy.png')
             fig.savefig(plot_path)
             plt.close(fig)
-        
-            equity = strat.analyzers.custom_metrics.values  # or cerebro.run()[0].equity_curve
 
             plt.figure(figsize=(10, 5))
-            plt.plot(equity, label='Equity Curve')
+            plt.plot(equity_data['Date'], equity_data['Equity'], label='Equity Curve')
             plt.title('Equity Curve')
-            plt.xlabel('Bar Number')
+            plt.xlabel('Date')
             plt.ylabel('Portfolio Value')
             plt.grid(True)
             plt.legend()
             plt.tight_layout()
-        
             plot_path = os.path.join(results_dir, f'{symbol}_Equity_Curve.png')
             plt.savefig(plot_path)
-            plt.close(fig)
-        
-        # Store equity data for aggregate plots
-        equity_data = pd.DataFrame({
-            'Date': data.index,
-            'Equity': cerebro.broker.getvalue(),
-            'Symbol': symbol
-        })
-        all_equity[symbol] = equity_data
-        
-        print(f"\nCompleted {symbol}")
+            plt.close()
 
-        equity_data = pd.DataFrame({
-            'Date': data.index,
-            'Equity': cerebro.broker.getvalue(),
-            'Symbol': symbol
-        })
-        all_equity[symbol] = equity_data
+        print(f"\nCompleted {symbol}")
     
         print(f"{symbol} sharpe ratio: {sharpe.get('sharperatio', 0.0)}")
         if custom.get('bad_trades'):
