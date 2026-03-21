@@ -10,31 +10,40 @@ A modular, event-driven backtesting system for evaluating machine learning tradi
 
 ## System Overview
 
-```
-Raw OHLCV CSVs
-      │
-      ▼
-Feature Pipeline (Python)           34 technical indicators, bar-by-bar,
-                                    identical logic to training
-      │
-      ▼
-Transformer Training (PyTorch)      Encoder-decoder, seqLen=30, predLen=5
-      │
-      ▼
-Model Export (TorchScript)          torch.jit.trace → .pt file
-StandardScaler Export               mean/scale per feature → CSV
-      │
-      ▼
-C++ Backtesting Engine              Event-driven: MARKET→SIGNAL→ORDER→FILL
-  ├── FeatureCSVDataHandler          Reads feature CSVs, emits typed events
-  ├── MLStrategy                     Buffers 30 bars, runs LibTorch inference
-  ├── Portfolio                      Position accounting, equity curve
-  ├── RiskManager                    Pre-trade order approval
-  └── SimulatedExecution             Fill simulation at market price
-      │
-      ▼
-ml_equity.csv  ml_trades.csv
-```
+The system is structured as an end-to-end pipeline that transforms raw market data into evaluated trading performance.
+
+**Data ingestion**
+
+The process begins with raw OHLCV market data stored in CSV format.
+
+**Feature engineering**
+
+A Python-based feature pipeline generates a set of technical indicators on a per-bar basis. This logic is consistent between training and inference to ensure no training–serving skew.
+
+**Model training**
+
+A transformer-based model is trained using PyTorch, learning temporal patterns from sequences of historical data (e.g. 30 timesteps input, predicting 5 ahead).
+
+**Model export**
+
+The trained model is exported using TorchScript for efficient inference in a non-Python environment. Feature scaling parameters are also exported to ensure consistency during live evaluation.
+
+**Backtesting engine**
+
+A high-performance C++ backtesting engine simulates trading using an event-driven architecture. The system processes market data, generates signals via the ML strategy, executes trades, and tracks portfolio performance.
+
+**Key components include:**
+
+
+- _**Data handler:**_ streams feature-engineered data into the system
+- _**ML strategy:**_ buffers input sequences and performs inference using LibTorch
+- _**Portfolio:**_ manages positions and computes the equity curve
+- _**Risk manager:**_ enforces constraints before order execution
+- _**Execution handler:**_ simulates trade fills at market prices
+
+**Output**
+
+The system produces structured outputs including equity curves and trade logs for performance evaluation.
 
 ---
 
