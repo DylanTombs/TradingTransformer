@@ -1,0 +1,21 @@
+# =============================================================================
+# backtest_config.yaml — ML backtest configuration
+#
+# All paths are resolved inside the Docker container.
+# Mount your feature CSVs and model artefacts to /features and /models
+# before running. See docker-compose.yml for volume mount definitions.
+# =============================================================================
+
+# Symbol to backtest — must match the filename prefix of the feature CSV
+symbol: AAPL
+
+# Path to the enriched feature CSV produced by pipeline.py
+feature_csv: /features/AAPL_features.csv
+
+# Model artefacts produced by exportModel.py
+model_pt:            /models/transformer.pt
+feature_scaler_csv:  /models/feature_scaler.csv
+target_scaler_csv:   /models/target_scaler.csv
+
+# Output directory — equity curve and trade log are written here
+output_dir: /output
