@@ -28,7 +28,8 @@ void BacktestEngine::run() {
 
     while (true) {
 
-        dataHandler.streamNext(queue);
+        if (queue.empty())
+            dataHandler.streamNext(queue);
 
         if (queue.empty())
             break;
