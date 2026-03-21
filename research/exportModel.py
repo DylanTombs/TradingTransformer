@@ -1,8 +1,12 @@
-import torch
+import csv
 import os
+
+import torch
 import torch.nn as nn
 from argparse import Namespace as dotdict
+
 from transformer.Interface import Model_Interface
+from transformer.DataFrame import DataFrameDataset
 
 
 class TransformerInferenceWrapper(nn.Module):
@@ -97,6 +101,58 @@ def load_args():
         args.pHiddenLayers = 2
 
         return args
+
+def save_scaler_params(dataset: DataFrameDataset, output_dir: str = "models") -> None:
+    """Export feature and target StandardScaler parameters to CSV.
+
+    Must be called after training while the DataFrameDataset (train split) is
+    still in scope so that .featureScaler and .targetScaler are available.
+
+    Produces two files consumed by MLStrategy in the C++ backtester:
+      models/feature_scaler.csv  — mean & scale for each auxiliary feature + target
+      models/target_scaler.csv   — mean & scale for the target column only
+
+    CSV format (matches ScalerParams::loadFromCSV):
+      feature,mean,scale
+      high,102.15,25.30
+      ...
+
+    Usage in training code (research/transformer/Interface.py):
+      from exportModel import save_scaler_params
+      save_scaler_params(train_dataset, output_dir='./models')
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ------------------------------------------------------------------ #
+    # Feature scaler (covers auxilFeatures in column order)               #
+    # ------------------------------------------------------------------ #
+    feature_path = os.path.join(output_dir, "feature_scaler.csv")
+    with open(feature_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["feature", "mean", "scale"])
+        for name, mean, scale in zip(
+            dataset.auxilFeatures,
+            dataset.featureScaler.mean_,
+            dataset.featureScaler.scale_,
+        ):
+            writer.writerow([name, mean, scale])
+
+    # ------------------------------------------------------------------ #
+    # Target scaler (single-column: the target feature, e.g. 'close')    #
+    # ------------------------------------------------------------------ #
+    target_path = os.path.join(output_dir, "target_scaler.csv")
+    with open(target_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["feature", "mean", "scale"])
+        writer.writerow([
+            dataset.target,
+            dataset.targetScaler.mean_[0],
+            dataset.targetScaler.scale_[0],
+        ])
+
+    print(f"Saved feature scaler ({len(dataset.auxilFeatures)} features) → {feature_path}")
+    print(f"Saved target  scaler (1 feature)                       → {target_path}")
+
 
 if __name__ == "__main__":
     export_model()
