@@ -2,33 +2,45 @@
 # docker-compose.yml — TradingTransformer
 #
 # Services:
+#   backtester  — C++ event-driven backtesting engine (ready to run now)
 #   pipeline    — Python: feature engineering → training → model export
-#   backtester  — C++:    event-driven backtesting using exported model
 #
-# Usage:
-#   # Run full pipeline then backtest
+# Quick start (backtester only):
+#   1. python scripts/convert_scalers.py        # convert pkl → csv scalers
+#   2. mkdir -p output
+#   3. docker compose run --rm backtester
+#
+# Full pipeline:
 #   docker compose up --build
-#
-#   # Run only the Python pipeline (skip backtest)
-#   docker compose run --rm pipeline
-#
-#   # Run only the backtest (assumes pipeline has already run)
-#   docker compose run --rm backtester
-#
-#   # Skip training and re-use an existing checkpoint
-#   docker compose run --rm pipeline --skip-train
-#
-# Volumes:
-#   ./data      → raw OHLCV CSVs (provide before running)
-#   ./features  → written by pipeline, read by backtester
-#   ./models    → written by pipeline, read by backtester
-#   ./output    → written by backtester (equity curve, trade log)
 # =============================================================================
 
 services:
 
   # ---------------------------------------------------------------------------
+  # backtester: C++ event-driven backtesting engine
+  #
+  # Reads from local directories directly — no named volumes needed.
+  # ---------------------------------------------------------------------------
+  backtester:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.backtester
+    image: tradingtransformer-backtester:latest
+    volumes:
+      # Feature CSV — bind mount to existing backtester/data directory
+      - ./backtester/data:/backtester/data:ro
+      # Model artefacts (transformer.pt + scaler CSVs) — bind mount
+      - ./models:/models:ro
+      # Output: ml_equity.csv, ml_trades.csv written here
+      - ./output:/output
+      # Backtest configuration
+      - ./backtest_config.yaml:/app/backtest_config.yaml:ro
+    command: ["/app/backtest_config.yaml"]
+
+  # ---------------------------------------------------------------------------
   # pipeline: feature engineering → training → model export
+  # Run this to regenerate features or retrain the model.
   # ---------------------------------------------------------------------------
   pipeline:
     build:
@@ -36,48 +48,10 @@ services:
       dockerfile: Dockerfile.python
     image: tradingtransformer-pipeline:latest
     volumes:
-      # Raw market data — read-only; provide your CSVs here before running
       - ./data:/app/data:ro
-      # Feature CSVs — written by pipeline, shared with backtester
-      - features:/app/features
-      # Model artefacts — written by pipeline, shared with backtester
-      - models:/app/models
-      # research/models holds the training checkpoint (Model3.pth)
-      - models:/app/research/models
+      - ./backtester/data:/app/features
+      - ./models:/app/models
+      - ./models:/app/research/models
     environment:
-      # Suppress PyTorch CUDA warnings in a CPU-only environment
       - CUDA_VISIBLE_DEVICES=""
-    # Override CMD to skip training if a checkpoint already exists:
-    #   docker compose run --rm pipeline --skip-train
     command: ["--data-dir", "/app/data", "--feature-dir", "/app/features", "--model-dir", "/app/models"]
-
-  # ---------------------------------------------------------------------------
-  # backtester: C++ event-driven backtesting engine
-  # ---------------------------------------------------------------------------
-  backtester:
-    build:
-      context: .
-      dockerfile: Dockerfile.backtester
-    image: tradingtransformer-backtester:latest
-    depends_on:
-      - pipeline
-    volumes:
-      # Feature CSVs — produced by pipeline service
-      - features:/features:ro
-      # Model artefacts — produced by pipeline service
-      - models:/models:ro
-      # Output: ml_equity.csv, ml_trades.csv written here
-      - ./output:/output
-      # Backtest configuration
-      - ./backtest_config.yaml:/app/backtest_config.yaml:ro
-    command: ["/app/backtest_config.yaml"]
-
-# =============================================================================
-# Named volumes — shared between services
-# To inspect: docker volume ls | grep tradingtransformer
-# =============================================================================
-volumes:
-  features:
-    name: tradingtransformer_features
-  models:
-    name: tradingtransformer_models

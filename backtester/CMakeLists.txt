@@ -14,31 +14,37 @@ add_executable(backtest main.cpp ${SOURCES})
 
 # ---------------------------------------------------------------------------
 # Tests — Google Test fetched at configure time, no manual install required.
+# Skipped when BUILD_TESTING=OFF (e.g. in Docker production builds).
 # ---------------------------------------------------------------------------
-include(FetchContent)
+include(CMakeDependentOption)
+option(BUILD_TESTING "Build the test suite" ON)
 
-FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
+if(BUILD_TESTING)
+    include(FetchContent)
 
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
 
-enable_testing()
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
 
-file(GLOB TEST_SOURCES "tests/*.cpp")
+    enable_testing()
 
-# Test binary: same src/*.cpp (no main.cpp) + GTest's main().
-# MLStrategy.cpp is included but ML_STRATEGY_ENABLED is NOT defined here,
-# so all LibTorch code is compiled out — tests run without LibTorch.
-add_executable(backtester_tests ${TEST_SOURCES} ${SOURCES})
-target_include_directories(backtester_tests PRIVATE include)
-target_link_libraries(backtester_tests GTest::gtest_main)
+    file(GLOB TEST_SOURCES "tests/*.cpp")
 
-include(GoogleTest)
-gtest_discover_tests(backtester_tests)
+    # Test binary: same src/*.cpp (no main.cpp) + GTest's main().
+    # MLStrategy.cpp is included but ML_STRATEGY_ENABLED is NOT defined here,
+    # so all LibTorch code is compiled out — tests run without LibTorch.
+    add_executable(backtester_tests ${TEST_SOURCES} ${SOURCES})
+    target_include_directories(backtester_tests PRIVATE include)
+    target_link_libraries(backtester_tests GTest::gtest_main)
+
+    include(GoogleTest)
+    gtest_discover_tests(backtester_tests)
+endif()
 
 # ---------------------------------------------------------------------------
 # ML backtest binary — requires LibTorch (optional).

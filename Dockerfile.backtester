@@ -19,8 +19,10 @@ ARG UBUNTU_VERSION=22.04
 
 # =============================================================================
 # Stage 1: builder
+# Pin to linux/amd64 — LibTorch CPU zip is x86_64 only.
+# On Apple Silicon, Docker Desktop runs this via Rosetta emulation.
 # =============================================================================
-FROM ubuntu:${UBUNTU_VERSION} AS builder
+FROM --platform=linux/amd64 ubuntu:${UBUNTU_VERSION} AS builder
 
 ARG LIBTORCH_VERSION
 
@@ -46,18 +48,21 @@ RUN wget -q \
 WORKDIR /build
 COPY backtester/ backtester/
 
-# Configure and build — ml_backtest target requires LibTorch
+# Configure and build — ml_backtest target requires LibTorch.
+# BUILD_TESTING=OFF skips the GoogleTest FetchContent download,
+# which is not needed in the production image.
 RUN cmake \
         -S backtester \
         -B build \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH=/opt/libtorch \
+        -DBUILD_TESTING=OFF \
     && cmake --build build --target ml_backtest --parallel "$(nproc)"
 
 # =============================================================================
-# Stage 2: runtime
+# Stage 2: runtime — must match builder platform so copied .so files are valid
 # =============================================================================
-FROM ubuntu:${UBUNTU_VERSION} AS runtime
+FROM --platform=linux/amd64 ubuntu:${UBUNTU_VERSION} AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 

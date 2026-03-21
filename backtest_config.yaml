@@ -10,7 +10,7 @@
 symbol: AAPL
 
 # Path to the enriched feature CSV produced by pipeline.py
-feature_csv: /features/AAPL_features.csv
+feature_csv: /backtester/data/AAPL_features.csv
 
 # Model artefacts produced by exportModel.py
 model_pt:            /models/transformer.pt
