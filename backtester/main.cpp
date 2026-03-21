@@ -23,7 +23,7 @@ int main() {
     if (equity.empty()) {
         std::cout << "No equity data generated." << std::endl;
     } else {
-        std::cout << "Final equity: " << std::get<1>(equity.back()) << std::endl;
+        std::cout << "Final equity: " << equity.back().equity << std::endl;
     }
 
     engine.getPortfolio().exportEquityCurve("equity.csv");
