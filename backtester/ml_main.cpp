@@ -19,6 +19,7 @@
  * research/exportModel.py::load_args() (auxilFeatures + [target]).
  */
 
+#include "config/BacktestConfig.hpp"
 #include "engine/BacktestEngine.hpp"
 #include "market/FeatureCSVDataHandler.hpp"
 #include "strategy/MLStrategy.hpp"
@@ -62,13 +63,24 @@ int main(int argc, char* argv[]) {
     const std::string modelPath   = (argc > 3) ? argv[3] : "models/transformer.pt";
     const std::string featScaler  = (argc > 4) ? argv[4] : "models/feature_scaler.csv";
     const std::string targScaler  = (argc > 5) ? argv[5] : "models/target_scaler.csv";
+    // Optional 6th arg: path to YAML config for slippage / sizing parameters
+    const std::string configPath  = (argc > 6) ? argv[6] : "/app/backtest_config.yaml";
+
+    const BacktestConfig config = BacktestConfig::loadFromYAML(configPath);
 
     std::cout << "=== ML Backtest ===" << std::endl;
-    std::cout << "  CSV:     " << csvPath    << std::endl;
-    std::cout << "  Symbol:  " << symbol     << std::endl;
-    std::cout << "  Model:   " << modelPath  << std::endl;
-    std::cout << "  FeatSc:  " << featScaler << std::endl;
-    std::cout << "  TgtSc:   " << targScaler << std::endl;
+    std::cout << "  CSV:              " << csvPath              << std::endl;
+    std::cout << "  Symbol:           " << symbol               << std::endl;
+    std::cout << "  Model:            " << modelPath            << std::endl;
+    std::cout << "  FeatScaler:       " << featScaler           << std::endl;
+    std::cout << "  TgtScaler:        " << targScaler           << std::endl;
+    std::cout << std::fixed << std::setprecision(4);
+    std::cout << "  Initial cash:     $" << config.initialCash     << std::endl;
+    std::cout << "  Risk fraction:     " << config.riskFraction*100 << "%" << std::endl;
+    std::cout << "  Half spread:       " << config.halfSpread*100   << "%" << std::endl;
+    std::cout << "  Slippage:          " << config.slippageFraction*100 << "%" << std::endl;
+    std::cout << "  Market impact:    $" << config.marketImpact  << "/share" << std::endl;
+    std::cout << "  Commission:       $" << config.commission     << "/trade" << std::endl;
 
     try {
         FeatureCSVDataHandler data(
@@ -84,7 +96,7 @@ int main(int argc, char* argv[]) {
             /*buyThreshold=*/  0.005,
             /*exitThreshold=*/ 0.0);
 
-        BacktestEngine engine(strategy, data);
+        BacktestEngine engine(strategy, data, config);
         engine.run();
 
         // ------------------------------------------------------------------
@@ -99,22 +111,25 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        const double startEquity = std::get<1>(curve.front());
-        const double endEquity   = std::get<1>(curve.back());
-        const double totalReturn = (endEquity / startEquity - 1.0) * 100.0;
+        const double startEquity     = curve.front().equity;
+        const double endEquity       = curve.back().equity;
+        const double totalReturn     = (endEquity / startEquity - 1.0) * 100.0;
+        const double benchmarkReturn = (curve.back().benchmarkEquity / startEquity - 1.0) * 100.0;
 
         int wins = 0;
         for (const auto& t : trades)
             if (t.profit) ++wins;
 
-        std::cout << "\n=== Results ===" << std::endl;
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << "  Start equity : $" << startEquity  << std::endl;
-        std::cout << "  End equity   : $" << endEquity    << std::endl;
-        std::cout << "  Total return : "  << totalReturn  << " %" << std::endl;
-        std::cout << "  Total trades : "  << trades.size() << std::endl;
+        std::cout << "\n=== Results ===" << std::endl;
+        std::cout << "  Start equity     : $" << startEquity     << std::endl;
+        std::cout << "  End equity       : $" << endEquity       << std::endl;
+        std::cout << "  Strategy return  :  " << totalReturn     << " %" << std::endl;
+        std::cout << "  Benchmark return :  " << benchmarkReturn << " %  (buy-and-hold)" << std::endl;
+        std::cout << "  Alpha            :  " << (totalReturn - benchmarkReturn) << " %" << std::endl;
+        std::cout << "  Total trades     :  " << trades.size()   << std::endl;
         if (!trades.empty())
-            std::cout << "  Win rate     : "
+            std::cout << "  Win rate         :  "
                       << (100.0 * wins / static_cast<double>(trades.size()))
                       << " %" << std::endl;
 

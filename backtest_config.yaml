@@ -19,3 +19,16 @@ target_scaler_csv:   /models/target_scaler.csv
 
 # Output directory — equity curve and trade log are written here
 output_dir: /output
+
+# =============================================================================
+# Execution realism (BacktestConfig parameters)
+# All fields are optional — omit to use the hardcoded defaults.
+# =============================================================================
+
+initial_cash:      100000.0  # Starting portfolio capital ($)
+risk_fraction:     0.10      # Fraction of equity per LONG signal (10%)
+half_spread:       0.0005    # Half bid-ask spread per fill (0.05%)
+slippage_fraction: 0.0005    # Directional slippage per trade (0.05%)
+market_impact:     0.0       # Price impact per share ($); 0 = disabled
+commission:        1.0       # Fixed commission per fill ($)
+max_position_size: 10000     # Hard per-symbol position cap (RiskManager gate)
