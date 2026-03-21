@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
             csvPath, symbol,
             MODEL_FEATURE_COLUMNS,
             /*closeColumn=*/ "close",
-            /*dateColumn=*/  "date");
+            /*dateColumn=*/  "timestamp");
 
         MLStrategy strategy(
             modelPath, featScaler, targScaler,

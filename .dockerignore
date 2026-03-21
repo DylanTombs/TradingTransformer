@@ -1,0 +1,70 @@
+# =============================================================================
+# .dockerignore — files excluded from Docker build context
+#
+# Keeps build context small and prevents sensitive/large files from being
+# sent to the Docker daemon on every build.
+# =============================================================================
+
+# Version control
+.git/
+.gitignore
+
+# Python artefacts
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+.eggs/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# C++ build artefacts (host builds — not used inside containers)
+build/
+_deps/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+*.o
+*.a
+backtester/build/
+backtester/_deps/
+
+# Large model binaries — loaded via volume mounts, not baked into image
+*.pt
+*.pth
+*.pkl
+research/models/
+
+# Raw data and generated features — loaded via volume mounts
+data/
+features/
+BacktestingData/
+
+# Results and analysis output
+Results/
+output/
+
+# IDE and OS files
+.vscode/
+.DS_Store
+*.swp
+
+# Environment files — never bake secrets into an image
+.env
+.env.*
+!.env.example
+
+# Documentation
+ARCHITECTURE.md
+DECISIONS.md
+
+# Training logs (not needed at runtime)
+training.log
