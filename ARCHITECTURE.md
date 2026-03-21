@@ -13,31 +13,22 @@
 
 ## High-Level Design
 
-The system is split into two independent layers with a well-defined contract at the boundary.
+The system is split into two independent layers with a well-defined contract at the boundary of the two.
 
-```
-┌─────────────────────────────────────────────┐
-│               Research Layer (Python)        │
-│                                             │
-│  StockDataPD.py  →  pipeline.py             │
-│                      │                      │
-│  Train.py        →  Interface.py            │
-│                      │                      │
-│  exportModel.py  → transformer.pt           │
-│                     feature_scaler.csv      │
-│                     target_scaler.csv       │
-└────────────────────┬────────────────────────┘
-                     │  CSV contract
-                     │  (feature columns + model artefacts)
-┌────────────────────▼────────────────────────┐
-│             Execution Layer (C++)            │
-│                                             │
-│  FeatureCSVDataHandler                      │
-│  MLStrategy + ScalerParams                  │
-│  BacktestEngine (event loop)                │
-│  Portfolio + RiskManager + Execution        │
-└─────────────────────────────────────────────┘
-```
+**Research Layer (Python)**
+
+- StockDataPD.py  -> pipeline.py
+- Train.py        -> Interface.py
+- exportModel.py  -> transformer.pt, feature_scaler.csv, target_scaler.csv
+
+**Execution Layer (C++)**
+
+- FeatureCSVDataHandler
+- MLStrategy + ScalerParams
+- BacktestEngine (event loop)
+- Portfolio + RiskManager + Execution
+
+ ---
 
 ### Component Responsibilities
 
@@ -68,17 +59,15 @@ The system is split into two independent layers with a well-defined contract at 
 
 Output columns (34 total, in fixed order):
 
-```
-date | high | low | volume | adj close |
-P R1 R2 R3 S1 S2 S3 |           ← pivot points
-obv volume_zscore |              ← volume indicators
-rsi macd macds macdh |          ← momentum
-sma lma sema lema |             ← moving averages
-overnight_gap return_lag_1 return_lag_3 return_lag_5 volatility |
-SR_K SR_D SR_RSI_K SR_RSI_D |  ← stochastic oscillators
-ATR HL_PCT PCT_CHG |            ← volatility
-close                           ← prediction target
-```
+- `date`,`high`,`low`,`volume`,`adj close`
+- `P`, `R1`, `R2`, `R3`, `S1`, `S2`, `S3` (**pivot points**)
+- `obv`, `volume_zscore` (**volume indicators**)
+- `rsi`, `macd`, `macds`, `macdh` (**momentum**)
+- `sma`, `lma`, `sema`, `lema` (**moving averages**)
+- `overnight_gap`, `return_lag_1`, `return_lag_3`, `return_lag_5` (**volatility**)
+- `SR_K`, `SR_D`, `SR_RSI_K`, `SR_RSI_D` (**stochastic oscillators**)
+- `ATR`, `HL_PCT`, `PCT_CHG` (**volatility**)
+- `close` (**prediction target**)
 
 Column order is fixed and validated against `exportModel.py::load_args()`.
 
