@@ -11,7 +11,12 @@ BacktestEngine::BacktestEngine(Strategy&            strategy,
                                const BacktestConfig& config)
     : strategy(strategy)
     , dataHandler(dataHandler)
-    , portfolio(config.initialCash, config.riskFraction)
+    , portfolio(config.initialCash,
+                config.riskFraction,
+                config.maxSymbolExposure,
+                config.maxTotalExposure,
+                config.correlationWindow,
+                config.correlationThreshold)
     , riskManager(config.maxPositionSize)
     , execution(config.commission,
                 config.halfSpread,

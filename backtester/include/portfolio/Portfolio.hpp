@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -11,54 +12,64 @@
 #include "../events/FillEvent.hpp"
 
 // ---------------------------------------------------------------------------
-// EquityPoint — one row of the equity curve, including the passive benchmark.
+// EquityPoint — one row of the equity curve.
+// benchmarkEquity is the buy-and-hold value for the FIRST symbol seen.
+// For multi-asset it represents equal-weight buy-and-hold of all symbols.
 // ---------------------------------------------------------------------------
 struct EquityPoint {
     std::string timestamp;
-    double      equity          = 0.0; ///< Strategy net liquidation value
-    double      price           = 0.0; ///< Symbol close price at this bar
-    double      benchmarkEquity = 0.0; ///< Buy-and-hold of same symbol from t=0
+    double      equity          = 0.0;
+    double      price           = 0.0;  ///< Close price of last-seen symbol
+    double      benchmarkEquity = 0.0;
 };
 
 // ---------------------------------------------------------------------------
 // Portfolio
 //
-// Responsibilities:
-//   - Track cash and positions after each fill
-//   - Generate orders from signals using risk-based position sizing
-//   - Record an equity curve (strategy vs buy-and-hold benchmark)
-//   - Export equity curve and trade log to CSV
+// Extended for multi-asset simulation:
+//   - Per-symbol buy-and-hold benchmark (equal-weight from first bars)
+//   - Exposure caps: maxSymbolExposure and maxTotalExposure guard against
+//     over-concentration before each LONG order is sized
+//   - 60-day rolling Pearson correlation between each new signal's symbol
+//     and all currently-held symbols; position size is discounted when
+//     correlation exceeds the configured threshold
 //
-// Design notes:
-//   - EXIT signals fully close the open position (sell all held shares)
-//   - LONG quantity = floor(equity * riskFraction / price)
-//   - Benchmark is a passive buy-and-hold from the first bar's price
+// Capital allocation (generateOrder):
+//   baseQty     = floor(equity * riskFraction / price)
+//   symbolCap   = floor(equity * (maxSymbolExposure - currentWeight) / price)
+//   portfolioCap= floor(equity * (maxTotalExposure  - totalWeight)   / price)
+//   qty         = max(1, min(baseQty, symbolCap, portfolioCap))
+//   qty         = floor(qty * (1 - correlationDiscount))
 // ---------------------------------------------------------------------------
 class Portfolio {
 public:
-    explicit Portfolio(double initialCash, double riskFraction = 0.10);
+    explicit Portfolio(double initialCash,
+                       double riskFraction      = 0.10,
+                       double maxSymbolExposure = 0.20,
+                       double maxTotalExposure  = 0.80,
+                       int    correlationWindow = 60,
+                       double correlationThreshold = 0.7);
 
     // ---- Trade record -------------------------------------------------------
     struct Trade {
         std::string timestamp;
-        double      price;
-        int         quantity;
-        std::string direction; ///< "BUY" or "SELL"
-        bool        profit;    ///< true if fill price > last buy price
+        std::string symbol;
+        double      price    = 0.0;
+        int         quantity = 0;
+        std::string direction;  ///< "BUY" or "SELL"
+        bool        profit   = false;
     };
 
     // ---- Core event handlers ------------------------------------------------
-
     void updateMarket(const MarketEvent& event);
 
     /**
-     * Converts a signal into an order:
-     *   LONG  → BUY  qty = floor(equity * riskFraction / price)
-     *   SHORT → SELL qty = floor(equity * riskFraction / price)
-     *   EXIT  → SELL qty = current position for that symbol (full close)
+     * Generates an order from a signal using risk-based sizing with
+     * multi-asset exposure caps and correlation discounting.
      *
-     * Returns an OrderType::HOLD with qty=0 when no action should be taken
-     * (e.g. EXIT with no open position, or price data unavailable).
+     * EXIT: sells the full current position for that symbol.
+     * LONG/SHORT: sizes by risk fraction, clamps to exposure caps,
+     *             then discounts for correlation with held positions.
      */
     OrderEvent generateOrder(const SignalEvent& signal);
 
@@ -80,17 +91,38 @@ private:
     double initialCash_;
     double cash_;
     double riskFraction_;
+    double maxSymbolExposure_;
+    double maxTotalExposure_;
+    int    correlationWindow_;
+    double correlationThreshold_;
 
-    // Benchmark: buy-and-hold from the first bar
-    bool   benchmarkInitialised_   = false;
-    double benchmarkInitialPrice_  = 0.0;
+    // Per-symbol state
+    std::unordered_map<std::string, double>      latestPrices_;
+    std::unordered_map<std::string, int>         positions_;
+    std::unordered_map<std::string, std::string> latestTimestamps_;
+
+    // Per-symbol benchmark (buy-and-hold initial price)
+    std::unordered_map<std::string, double> benchmarkInitialPrice_;
+    // Running sum of per-symbol benchmark equity (equal-weight across all symbols seen)
+    std::unordered_map<std::string, double> benchmarkUnits_; ///< shares in benchmark per symbol
+
+    // Rolling daily returns per symbol for correlation matrix
+    std::unordered_map<std::string, std::deque<double>> returnHistory_;
+    std::unordered_map<std::string, double>             prevPrice_;
 
     double lastBuyPrice_ = 0.0;
 
-    std::unordered_map<std::string, double> latestPrices_;
-    std::unordered_map<std::string, int>    positions_;
-    std::unordered_map<std::string, std::string> latestTimestamps_;
-
     std::vector<EquityPoint> equityCurve_;
     std::vector<Trade>       trades_;
+
+    // ---- Private helpers ----------------------------------------------------
+    double getTotalPositionValue() const;
+    double getSymbolPositionValue(const std::string& symbol) const;
+
+    /// Returns the correlation discount factor in [0, 1] to apply to qty.
+    /// 1.0 = no discount, 0.0 = full discount.
+    double correlationDiscount(const std::string& newSymbol) const;
+
+    static double pearsonCorr(const std::deque<double>& x,
+                              const std::deque<double>& y);
 };

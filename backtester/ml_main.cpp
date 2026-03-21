@@ -2,31 +2,32 @@
  * ml_main.cpp — ML backtester entry point.
  *
  * Wires together:
- *   FeatureCSVDataHandler  (reads pipeline-enriched CSV)
- *   →  BacktestEngine
- *   →  MLStrategy           (transformer inference via LibTorch)
+ *   BacktestConfig              (YAML-driven configuration)
+ *   MultiAssetDataHandler       (synchronises N FeatureCSVDataHandlers by date)
+ *   BacktestEngine              (MARKET→SIGNAL→ORDER→FILL event loop)
+ *   MLStrategy (per symbol)     (transformer inference via LibTorch)
+ *   PerformanceMetrics          (Sharpe, IR, drawdown, alpha)
  *
  * Usage:
- *   ./ml_backtest <feature_csv> <symbol>
- *                 [model_pt]            default: models/transformer.pt
- *                 [feature_scaler_csv]  default: models/feature_scaler.csv
- *                 [target_scaler_csv]   default: models/target_scaler.csv
+ *   ./ml_backtest <backtest_config.yaml>
  *
- * The feature CSV is produced by research/features/pipeline.py.
- * The model and scaler files are produced by research/exportModel.py.
- *
- * Feature column order must match the training configuration in
- * research/exportModel.py::load_args() (auxilFeatures + [target]).
+ * The config YAML specifies all symbols, paths, and execution parameters.
+ * See backtest_config.yaml for the full schema.
  */
 
 #include "config/BacktestConfig.hpp"
 #include "engine/BacktestEngine.hpp"
 #include "market/FeatureCSVDataHandler.hpp"
+#include "market/MultiAssetDataHandler.hpp"
+#include "portfolio/PerformanceMetrics.hpp"
 #include "strategy/MLStrategy.hpp"
+#include "strategy/Strategy.hpp"
 
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -48,97 +49,145 @@ static const std::vector<std::string> MODEL_FEATURE_COLUMNS = {
 };
 
 // ---------------------------------------------------------------------------
+// MultiSymbolStrategy
+//
+// Routes each MarketEvent to the per-symbol MLStrategy instance.
+// This lets a single Strategy& reference satisfy the BacktestEngine API
+// while each symbol maintains its own feature buffer and position flag.
+// ---------------------------------------------------------------------------
+class MultiSymbolStrategy : public Strategy {
+public:
+    void addSymbol(const std::string&       symbol,
+                   std::unique_ptr<MLStrategy> strategy) {
+        strategies_[symbol] = std::move(strategy);
+    }
+
+    void onMarketEvent(const MarketEvent& event, EventQueue& queue) override {
+        const auto it = strategies_.find(event.symbol);
+        if (it != strategies_.end())
+            it->second->onMarketEvent(event, queue);
+    }
+
+private:
+    std::unordered_map<std::string, std::unique_ptr<MLStrategy>> strategies_;
+};
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0]
-                  << " <feature_csv> <symbol>"
-                     " [model_pt] [feature_scaler_csv] [target_scaler_csv]\n";
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <backtest_config.yaml>\n";
         return 1;
     }
 
-    const std::string csvPath     = argv[1];
-    const std::string symbol      = argv[2];
-    const std::string modelPath   = (argc > 3) ? argv[3] : "models/transformer.pt";
-    const std::string featScaler  = (argc > 4) ? argv[4] : "models/feature_scaler.csv";
-    const std::string targScaler  = (argc > 5) ? argv[5] : "models/target_scaler.csv";
-    // Optional 6th arg: path to YAML config for slippage / sizing parameters
-    const std::string configPath  = (argc > 6) ? argv[6] : "/app/backtest_config.yaml";
+    const std::string configPath = argv[1];
+    const BacktestConfig config  = BacktestConfig::loadFromYAML(configPath);
 
-    const BacktestConfig config = BacktestConfig::loadFromYAML(configPath);
+    if (config.symbols.empty()) {
+        std::cerr << "Error: no symbols defined in " << configPath
+                  << " (expected 'symbol' + 'feature_csv' keys)\n";
+        return 1;
+    }
 
-    std::cout << "=== ML Backtest ===" << std::endl;
-    std::cout << "  CSV:              " << csvPath              << std::endl;
-    std::cout << "  Symbol:           " << symbol               << std::endl;
-    std::cout << "  Model:            " << modelPath            << std::endl;
-    std::cout << "  FeatScaler:       " << featScaler           << std::endl;
-    std::cout << "  TgtScaler:        " << targScaler           << std::endl;
-    std::cout << std::fixed << std::setprecision(4);
-    std::cout << "  Initial cash:     $" << config.initialCash     << std::endl;
-    std::cout << "  Risk fraction:     " << config.riskFraction*100 << "%" << std::endl;
-    std::cout << "  Half spread:       " << config.halfSpread*100   << "%" << std::endl;
-    std::cout << "  Slippage:          " << config.slippageFraction*100 << "%" << std::endl;
-    std::cout << "  Market impact:    $" << config.marketImpact  << "/share" << std::endl;
-    std::cout << "  Commission:       $" << config.commission     << "/trade" << std::endl;
+    // ---- Print config summary ----------------------------------------------
+    std::cout << "=== ML Backtest ===\n"
+              << std::fixed << std::setprecision(4)
+              << "  Config:           " << configPath                    << "\n"
+              << "  Symbols:          " << config.symbols.size()         << "\n"
+              << "  Model:            " << config.modelPt                << "\n"
+              << "  FeatScaler:       " << config.featScalerCsv          << "\n"
+              << "  TgtScaler:        " << config.targScalerCsv          << "\n"
+              << "  Output dir:       " << config.outputDir              << "\n"
+              << "  Initial cash:    $" << config.initialCash            << "\n"
+              << "  Risk fraction:    " << config.riskFraction  * 100    << " %\n"
+              << "  Max sym exposure: " << config.maxSymbolExposure * 100<< " %\n"
+              << "  Max tot exposure: " << config.maxTotalExposure  * 100<< " %\n"
+              << "  Half spread:      " << config.halfSpread      * 100  << " %\n"
+              << "  Slippage:         " << config.slippageFraction * 100 << " %\n"
+              << "  Commission:      $" << config.commission              << "/trade\n"
+              << "  Corr window:      " << config.correlationWindow       << " days\n"
+              << "  Corr threshold:   " << config.correlationThreshold    << "\n";
+
+    for (const auto& sym : config.symbols)
+        std::cout << "    [" << sym.symbol << "] " << sym.featureCsv << "\n";
 
     try {
-        FeatureCSVDataHandler data(
-            csvPath, symbol,
-            MODEL_FEATURE_COLUMNS,
-            /*closeColumn=*/ "close",
-            /*dateColumn=*/  "timestamp");
+        // ---- Build multi-asset data handler --------------------------------
+        auto multi = std::make_unique<MultiAssetDataHandler>();
 
-        MLStrategy strategy(
-            modelPath, featScaler, targScaler,
-            /*seqLen=*/        30,
-            /*nFeatures=*/     static_cast<int>(MODEL_FEATURE_COLUMNS.size()),
-            /*buyThreshold=*/  0.005,
-            /*exitThreshold=*/ 0.0);
+        for (const auto& sym : config.symbols) {
+            auto handler = std::make_unique<FeatureCSVDataHandler>(
+                sym.featureCsv,
+                sym.symbol,
+                MODEL_FEATURE_COLUMNS,
+                /*closeColumn=*/ "close",
+                /*dateColumn=*/  "timestamp");
+            multi->addHandler(std::move(handler));
+        }
 
-        BacktestEngine engine(strategy, data, config);
+        // ---- Build per-symbol strategies -----------------------------------
+        MultiSymbolStrategy compositeStrategy;
+
+        const int nFeatures = static_cast<int>(MODEL_FEATURE_COLUMNS.size());
+        for (const auto& sym : config.symbols) {
+            auto strat = std::make_unique<MLStrategy>(
+                config.modelPt,
+                config.featScalerCsv,
+                config.targScalerCsv,
+                /*seqLen=*/        30,
+                /*nFeatures=*/     nFeatures,
+                /*buyThreshold=*/  0.005,
+                /*exitThreshold=*/ 0.0);
+            compositeStrategy.addSymbol(sym.symbol, std::move(strat));
+        }
+
+        // ---- Run backtest --------------------------------------------------
+        BacktestEngine engine(compositeStrategy, *multi, config);
         engine.run();
 
-        // ------------------------------------------------------------------
-        // Summary
-        // ------------------------------------------------------------------
+        // ---- Results -------------------------------------------------------
         auto& portfolio = engine.getPortfolio();
         auto& curve     = portfolio.getEquityCurve();
         auto& trades    = portfolio.getTrades();
 
         if (curve.empty()) {
-            std::cout << "\nNo market data processed." << std::endl;
+            std::cout << "\nNo market data processed.\n";
             return 0;
         }
 
-        const double startEquity     = curve.front().equity;
-        const double endEquity       = curve.back().equity;
-        const double totalReturn     = (endEquity / startEquity - 1.0) * 100.0;
-        const double benchmarkReturn = (curve.back().benchmarkEquity / startEquity - 1.0) * 100.0;
+        const PerformanceMetrics metrics =
+            PerformanceMetrics::compute(curve, config.riskFreeRate);
+        metrics.print(std::cout);
 
         int wins = 0;
         for (const auto& t : trades)
             if (t.profit) ++wins;
 
-        std::cout << std::fixed << std::setprecision(2);
-        std::cout << "\n=== Results ===" << std::endl;
-        std::cout << "  Start equity     : $" << startEquity     << std::endl;
-        std::cout << "  End equity       : $" << endEquity       << std::endl;
-        std::cout << "  Strategy return  :  " << totalReturn     << " %" << std::endl;
-        std::cout << "  Benchmark return :  " << benchmarkReturn << " %  (buy-and-hold)" << std::endl;
-        std::cout << "  Alpha            :  " << (totalReturn - benchmarkReturn) << " %" << std::endl;
-        std::cout << "  Total trades     :  " << trades.size()   << std::endl;
+        std::cout << std::fixed << std::setprecision(2)
+                  << "  Total trades     :  " << trades.size() << "\n";
         if (!trades.empty())
             std::cout << "  Win rate         :  "
                       << (100.0 * wins / static_cast<double>(trades.size()))
-                      << " %" << std::endl;
+                      << " %\n";
 
-        portfolio.exportEquityCurve("ml_equity.csv");
-        portfolio.exportTrades("ml_trades.csv");
-        std::cout << "\nSaved: ml_equity.csv  ml_trades.csv" << std::endl;
+        // ---- Export --------------------------------------------------------
+        const std::string outDir = config.outputDir.empty() ? "." : config.outputDir;
+        const std::string equityOut = outDir + "/ml_equity.csv";
+        const std::string tradesOut = outDir + "/ml_trades.csv";
+        const std::string metricsOut= outDir + "/ml_metrics.csv";
+
+        portfolio.exportEquityCurve(equityOut);
+        portfolio.exportTrades(tradesOut);
+        metrics.exportCSV(metricsOut);
+
+        std::cout << "\nSaved:\n"
+                  << "  " << equityOut  << "\n"
+                  << "  " << tradesOut  << "\n"
+                  << "  " << metricsOut << "\n";
 
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "Error: " << e.what() << "\n";
         return 1;
     }
 
