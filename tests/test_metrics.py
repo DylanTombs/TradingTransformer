@@ -1,10 +1,18 @@
 """Unit tests for the StrategyEvaluator metric methods in Trading_Simulator.py.
+
+Trading_Simulator is the legacy backtrader-based simulator.  It was replaced by
+the C++ backtesting engine.  These tests are retained for historical reference
+but will be skipped automatically if the module is not present.
 """
 import math
 import numpy as np
 import pytest
 
-from Trading_Simulator import StrategyEvaluator
+Trading_Simulator = pytest.importorskip(
+    "Trading_Simulator",
+    reason="Trading_Simulator module not present (replaced by C++ engine)",
+)
+StrategyEvaluator = Trading_Simulator.StrategyEvaluator
 
 
 
