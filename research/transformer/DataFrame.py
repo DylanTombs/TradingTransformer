@@ -108,7 +108,7 @@ class DataFrameDataset(Dataset):
         return timeSteps.values.astype(np.float32)
 
     def __getitem__(self, index):
-        sBegin = index
+        sBegin = self.valid_indices[index]
         sEnd = sBegin + self.seqLen
 
         if self.flag == "pred":
@@ -136,7 +136,7 @@ class DataFrameDataset(Dataset):
     def __len__(self):
         if self.flag == "pred":
             return 1
-        return len(self.dataX) - self.seqLen - self.predLen + 1
+        return len(self.valid_indices)
 
     def inverseTransform(self, data, isTarget=True):
         if isTarget:

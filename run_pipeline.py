@@ -21,6 +21,59 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+# ---------------------------------------------------------------------------
+# Configuration schema — validated before any subprocess is spawned
+# ---------------------------------------------------------------------------
+
+class PipelineConfig(BaseModel):
+    """All pipeline settings, validated at startup."""
+
+    # Paths
+    data_dir:    str  = "data"
+    feature_dir: str  = "features"
+    model_dir:   str  = "models"
+    skip_train:  bool = False
+
+    # Sequence window
+    seq_len:   int = Field(default=30,  gt=0, description="Encoder input length")
+    label_len: int = Field(default=10,  gt=0, description="Decoder overlap length")
+    pred_len:  int = Field(default=5,   gt=0, description="Forecast horizon")
+
+    # Transformer architecture
+    d_model:  int   = Field(default=256, gt=0)
+    n_heads:  int   = Field(default=8,   gt=0)
+    e_layers: int   = Field(default=3,   gt=0)
+    d_layers: int   = Field(default=2,   gt=0)
+    d_ff:     int   = Field(default=512, gt=0)
+    dropout:  float = Field(default=0.1, ge=0.0, le=1.0)
+
+    # Training
+    batch_size:     int   = Field(default=128,    gt=0)
+    train_epochs:   int   = Field(default=100,    gt=0)
+    learning_rate:  float = Field(default=0.0005, gt=0.0)
+
+    @field_validator("n_heads")
+    @classmethod
+    def heads_must_divide_d_model(cls, v: int, info) -> int:
+        d_model = (info.data or {}).get("d_model", 256)
+        if d_model % v != 0:
+            raise ValueError(
+                f"n_heads={v} must evenly divide d_model={d_model}"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def data_dir_must_exist(self) -> "PipelineConfig":
+        if not Path(self.data_dir).exists():
+            raise ValueError(
+                f"data_dir '{self.data_dir}' does not exist — "
+                "create the directory or pass --data-dir <path>"
+            )
+        return self
+
 
 def run(cmd: list, *, cwd: str | None = None) -> None:
     """Run a command, stream output, and exit on failure."""
@@ -61,8 +114,20 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    Path(args.feature_dir).mkdir(parents=True, exist_ok=True)
-    Path(args.model_dir).mkdir(parents=True, exist_ok=True)
+    # Validate all settings eagerly — fail fast before spawning any subprocess.
+    try:
+        cfg = PipelineConfig(
+            data_dir=args.data_dir,
+            feature_dir=args.feature_dir,
+            model_dir=args.model_dir,
+            skip_train=args.skip_train,
+        )
+    except Exception as exc:
+        print(f"[PipelineConfig] Invalid configuration: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    Path(cfg.feature_dir).mkdir(parents=True, exist_ok=True)
+    Path(cfg.model_dir).mkdir(parents=True, exist_ok=True)
 
     python = sys.executable
 
@@ -73,14 +138,14 @@ def main() -> None:
     run([
         python,
         "research/features/pipeline.py",
-        args.data_dir,
-        "-o", args.feature_dir,
+        cfg.data_dir,
+        "-o", cfg.feature_dir,
     ])
 
     # ------------------------------------------------------------------
     # Stage 2 — Training (skippable when re-exporting an existing model)
     # ------------------------------------------------------------------
-    if args.skip_train:
+    if cfg.skip_train:
         print("\n[Stage 2/3] Training skipped (--skip-train)")
     else:
         print("\n[Stage 2/3] Model training")
@@ -95,7 +160,7 @@ def main() -> None:
     # exportModel.py writes to ./models/ (relative to CWD).
     # If --model-dir differs, copy the artefacts there.
     default_model_dir = Path("models")
-    target_model_dir = Path(args.model_dir)
+    target_model_dir = Path(cfg.model_dir)
     if target_model_dir.resolve() != default_model_dir.resolve():
         import shutil
         for artefact in ["transformer.pt", "feature_scaler.csv", "target_scaler.csv"]:
@@ -104,7 +169,7 @@ def main() -> None:
                 shutil.copy2(src, target_model_dir / artefact)
                 print(f"Copied {src} → {target_model_dir / artefact}")
 
-    print(f"\n[Pipeline complete] Artefacts written to {args.model_dir}/")
+    print(f"\n[Pipeline complete] Artefacts written to {cfg.model_dir}/")
     print("  transformer.pt")
     print("  feature_scaler.csv")
     print("  target_scaler.csv")
