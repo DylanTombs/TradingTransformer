@@ -51,9 +51,9 @@ class PipelineConfig(BaseModel):
     dropout:  float = Field(default=0.1, ge=0.0, le=1.0)
 
     # Training
-    batch_size:     int   = Field(default=128,    gt=0)
-    train_epochs:   int   = Field(default=100,    gt=0)
-    learning_rate:  float = Field(default=0.0005, gt=0.0)
+    batch_size: int = Field(default=128, gt=0)
+    train_epochs: int = Field(default=100, gt=0)
+    learning_rate: float = Field(default=0.0005, gt=0.0)
 
     @field_validator("n_heads")
     @classmethod

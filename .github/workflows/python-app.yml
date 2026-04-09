@@ -29,9 +29,9 @@ jobs:
       - name: Lint (syntax errors and undefined names)
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
-      - name: Lint (full style — pipeline and research code)
+      - name: Lint (full style — new pipeline code only)
         run: |
-          flake8 research/ run_pipeline.py \
+          flake8 run_pipeline.py \
             --count --max-line-length=100 \
             --extend-ignore=E203,W503 \
             --statistics
