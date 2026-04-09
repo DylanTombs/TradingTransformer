@@ -72,15 +72,31 @@ TEST(MetricsEdge, FlatCurveTotalReturnIsZero) {
 // Sharpe ratio
 // ---------------------------------------------------------------------------
 
+/// Alternating up/down curve — non-zero variance, controllable mean/std ratio.
+static std::vector<EquityPoint> sawtoothCurve(int n, double start,
+                                              double upStep, double downStep) {
+    std::vector<EquityPoint> curve(n);
+    double eq = start;
+    for (int i = 0; i < n; ++i) {
+        curve[i] = {"2020-01-01", eq, eq, start};
+        eq += (i % 2 == 0) ? upStep : -downStep;
+        if (eq <= 0.0) eq = 1.0;  // guard against degenerate curves
+    }
+    return curve;
+}
+
 TEST(MetricsSharpe, PositiveReturnCurveHasPositiveSharpe) {
     auto curve = linearCurve(252, 10'000.0, 10.0, 5.0);
     auto m = PerformanceMetrics::compute(curve);
     EXPECT_GT(m.sharpeRatio, 0.0);
 }
 
-TEST(MetricsSharpe, HigherReturnCurveHasHigherSharpe) {
-    auto low  = linearCurve(252, 10'000.0,  5.0, 0.0);
-    auto high = linearCurve(252, 10'000.0, 20.0, 0.0);
+TEST(MetricsSharpe, HigherRiskAdjustedReturnHasHigherSharpe) {
+    // Both curves alternate up/down with the same up-step (10).
+    // 'high' has a smaller down-step (2 vs 8), giving a better mean/std ratio
+    // and therefore a higher Sharpe, regardless of equity magnitude effects.
+    auto low  = sawtoothCurve(252, 10'000.0, 10.0, 8.0);
+    auto high = sawtoothCurve(252, 10'000.0, 10.0, 2.0);
     auto mLow  = PerformanceMetrics::compute(low);
     auto mHigh = PerformanceMetrics::compute(high);
     EXPECT_GT(mHigh.sharpeRatio, mLow.sharpeRatio);

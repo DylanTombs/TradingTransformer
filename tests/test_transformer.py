@@ -31,7 +31,7 @@ def _make_inputs(batch: int, seq_len: int, label_len: int, pred_len: int,
                  n_features: int):
     """Return (enc_x, enc_mark, dec_x, dec_mark) random float tensors."""
     enc_x = torch.randn(batch, seq_len, n_features)
-    enc_mark = torch.randn(batch, seq_len, 3)         
+    enc_mark = torch.randn(batch, seq_len, 3)
     dec_x = torch.randn(batch, label_len + pred_len, n_features)
     dec_mark = torch.randn(batch, label_len + pred_len, 3)
     return enc_x, enc_mark, dec_x, dec_mark
@@ -47,6 +47,7 @@ class TestModelInstantiation:
         import torch.nn as nn
         model = ModelModule.Model(small_config)
         assert isinstance(model, nn.Module)
+
 
 class TestForwardPassShape:
 
