@@ -32,23 +32,23 @@ class PipelineConfig(BaseModel):
     """All pipeline settings, validated at startup."""
 
     # Paths
-    data_dir:    str  = "data"
-    feature_dir: str  = "features"
-    model_dir:   str  = "models"
-    skip_train:  bool = False
+    data_dir: str = "data"
+    feature_dir: str = "features"
+    model_dir: str = "models"
+    skip_train: bool = False
 
     # Sequence window
-    seq_len:   int = Field(default=30,  gt=0, description="Encoder input length")
-    label_len: int = Field(default=10,  gt=0, description="Decoder overlap length")
-    pred_len:  int = Field(default=5,   gt=0, description="Forecast horizon")
+    seq_len: int = Field(default=30, gt=0, description="Encoder input length")
+    label_len: int = Field(default=10, gt=0, description="Decoder overlap length")
+    pred_len: int = Field(default=5, gt=0, description="Forecast horizon")
 
     # Transformer architecture
-    d_model:  int   = Field(default=256, gt=0)
-    n_heads:  int   = Field(default=8,   gt=0)
-    e_layers: int   = Field(default=3,   gt=0)
-    d_layers: int   = Field(default=2,   gt=0)
-    d_ff:     int   = Field(default=512, gt=0)
-    dropout:  float = Field(default=0.1, ge=0.0, le=1.0)
+    d_model: int = Field(default=256, gt=0)
+    n_heads: int = Field(default=8, gt=0)
+    e_layers: int = Field(default=3, gt=0)
+    d_layers: int = Field(default=2, gt=0)
+    d_ff: int = Field(default=512, gt=0)
+    dropout: float = Field(default=0.1, ge=0.0, le=1.0)
 
     # Training
     batch_size: int = Field(default=128, gt=0)
