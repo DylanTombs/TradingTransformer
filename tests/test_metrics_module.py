@@ -80,12 +80,14 @@ class TestRSE:
 
 class TestCORR:
     def test_perfect_correlation(self):
-        arr = np.array([1.0, 2.0, 3.0])
+        # CORR expects 2-D inputs: (n_samples, n_features)
+        arr = np.array([[1.0], [2.0], [3.0]])
         result = CORR(arr, arr)
         assert float(np.mean(result)) == pytest.approx(1.0, abs=1e-6)
 
     def test_returns_finite_value(self):
-        p, t = _arrays([1, 2, 3, 4], [4, 3, 2, 1])
+        p = np.array([[1.0], [2.0], [3.0], [4.0]])
+        t = np.array([[4.0], [3.0], [2.0], [1.0]])
         assert np.isfinite(CORR(p, t))
 
 
