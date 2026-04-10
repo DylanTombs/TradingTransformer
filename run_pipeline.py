@@ -3,17 +3,18 @@
 run_pipeline.py — ML pipeline orchestrator.
 
 Executes three stages in order:
-  1. Feature engineering  (pipeline.py)    raw OHLCV  →  feature CSVs
-  2. Model training       (Train.py)       feature CSVs  →  Model3.pth
-  3. Model export         (exportModel.py) Model3.pth →  transformer.pt + scalers
+  1. Feature engineering  (pipeline.py)       raw OHLCV  →  feature CSVs
+  2. Model training       (Interface.py)      feature CSVs  →  checkpoint.pth
+  3. Model export         (exportModel.py)    checkpoint.pth →  transformer.pt + scalers
 
 Each stage is a subprocess so failures are caught immediately and the
 exit code propagates to the calling shell / container orchestrator.
 
 Usage:
-  python run_pipeline.py
-  python run_pipeline.py --skip-train          # re-export an existing checkpoint
-  python run_pipeline.py --data-dir /data      # override default paths
+  python run_pipeline.py --data-dir data/ --feature-dir features/
+  python run_pipeline.py --skip-train
+  python run_pipeline.py --config models/best_config.yaml  # use Optuna best params
+  python run_pipeline.py --seed 42
 """
 
 import argparse
@@ -21,6 +22,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -36,6 +38,10 @@ class PipelineConfig(BaseModel):
     feature_dir: str = "features"
     model_dir: str = "models"
     skip_train: bool = False
+    config_file: str = ""  # optional path to best_config.yaml from Optuna
+
+    # Reproducibility
+    seed: int = Field(default=42, ge=0)
 
     # Sequence window
     seq_len: int = Field(default=30, gt=0, description="Encoder input length")
@@ -74,6 +80,20 @@ class PipelineConfig(BaseModel):
             )
         return self
 
+    @classmethod
+    def from_yaml(cls, path: str, overrides: dict | None = None) -> "PipelineConfig":
+        """Load config from a YAML file (e.g. models/best_config.yaml) with
+        optional CLI overrides applied on top."""
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        if overrides:
+            data.update({k: v for k, v in overrides.items() if v is not None})
+        return cls(**data)
+
+
+# ---------------------------------------------------------------------------
+# Runner
+# ---------------------------------------------------------------------------
 
 def run(cmd: list, *, cwd: str | None = None) -> None:
     """Run a command, stream output, and exit on failure."""
@@ -83,45 +103,77 @@ def run(cmd: list, *, cwd: str | None = None) -> None:
 
     result = subprocess.run(cmd, cwd=cwd)
     if result.returncode != 0:
-        print(f"\n[ERROR] Command failed with exit code {result.returncode}", file=sys.stderr)
+        print(f"\n[ERROR] Command failed with exit code {result.returncode}",
+              file=sys.stderr)
         sys.exit(result.returncode)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def _parse_args():
+    p = argparse.ArgumentParser(
         description="TradingTransformer ML pipeline orchestrator",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument(
-        "--data-dir",
-        default="data",
-        help="Directory containing raw OHLCV CSVs",
-    )
-    parser.add_argument(
-        "--feature-dir",
-        default="features",
-        help="Directory to write enriched feature CSVs",
-    )
-    parser.add_argument(
-        "--model-dir",
-        default="models",
-        help="Directory to write exported model artefacts",
-    )
-    parser.add_argument(
-        "--skip-train",
-        action="store_true",
-        help="Skip training and use the existing checkpoint in research/models/",
-    )
-    args = parser.parse_args()
+    p.add_argument("--data-dir", default="data",
+                   help="Directory containing raw OHLCV CSVs")
+    p.add_argument("--feature-dir", default="features",
+                   help="Directory to write enriched feature CSVs")
+    p.add_argument("--model-dir", default="models",
+                   help="Directory to write exported model artefacts")
+    p.add_argument("--skip-train", action="store_true",
+                   help="Skip training and re-export an existing checkpoint")
+    p.add_argument("--config",
+                   help="Path to YAML config (e.g. models/best_config.yaml)")
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--seq-len", type=int)
+    p.add_argument("--label-len", type=int)
+    p.add_argument("--pred-len", type=int)
+    p.add_argument("--d-model", type=int)
+    p.add_argument("--n-heads", type=int)
+    p.add_argument("--e-layers", type=int)
+    p.add_argument("--d-layers", type=int)
+    p.add_argument("--d-ff", type=int)
+    p.add_argument("--dropout", type=float)
+    p.add_argument("--batch-size", type=int)
+    p.add_argument("--epochs", type=int)
+    p.add_argument("--lr", type=float)
+    return p.parse_args()
 
-    # Validate all settings eagerly — fail fast before spawning any subprocess.
+
+def main() -> None:
+    cli = _parse_args()
+
+    # Collect explicit CLI overrides (skip Nones so YAML values aren't clobbered)
+    overrides = {
+        k: v for k, v in {
+            "data_dir": cli.data_dir,
+            "feature_dir": cli.feature_dir,
+            "model_dir": cli.model_dir,
+            "skip_train": cli.skip_train,
+            "seed": cli.seed,
+            "seq_len": cli.seq_len,
+            "label_len": cli.label_len,
+            "pred_len": cli.pred_len,
+            "d_model": cli.d_model,
+            "n_heads": cli.n_heads,
+            "e_layers": cli.e_layers,
+            "d_layers": cli.d_layers,
+            "d_ff": cli.d_ff,
+            "dropout": cli.dropout,
+            "batch_size": cli.batch_size,
+            "train_epochs": cli.epochs,
+            "learning_rate": cli.lr,
+        }.items() if v is not None
+    }
+
     try:
-        cfg = PipelineConfig(
-            data_dir=args.data_dir,
-            feature_dir=args.feature_dir,
-            model_dir=args.model_dir,
-            skip_train=args.skip_train,
-        )
+        if cli.config:
+            cfg = PipelineConfig.from_yaml(cli.config, overrides)
+        else:
+            cfg = PipelineConfig(**overrides)
     except Exception as exc:
         print(f"[PipelineConfig] Invalid configuration: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -143,13 +195,31 @@ def main() -> None:
     ])
 
     # ------------------------------------------------------------------
-    # Stage 2 — Training (skippable when re-exporting an existing model)
+    # Stage 2 — Training
     # ------------------------------------------------------------------
     if cfg.skip_train:
         print("\n[Stage 2/3] Training skipped (--skip-train)")
     else:
         print("\n[Stage 2/3] Model training")
-        run([python, "research/training/Train.py"])
+        run([
+            python,
+            "research/transformer/Interface.py",
+            "--data-path", cfg.feature_dir,
+            "--checkpoints", "./checkpoints/",
+            "--seq-len", str(cfg.seq_len),
+            "--label-len", str(cfg.label_len),
+            "--pred-len", str(cfg.pred_len),
+            "--d-model", str(cfg.d_model),
+            "--n-heads", str(cfg.n_heads),
+            "--e-layers", str(cfg.e_layers),
+            "--d-layers", str(cfg.d_layers),
+            "--d-ff", str(cfg.d_ff),
+            "--dropout", str(cfg.dropout),
+            "--batch-size", str(cfg.batch_size),
+            "--epochs", str(cfg.train_epochs),
+            "--lr", str(cfg.learning_rate),
+            "--seed", str(cfg.seed),
+        ])
 
     # ------------------------------------------------------------------
     # Stage 3 — Export to LibTorch + scaler CSVs
@@ -157,8 +227,6 @@ def main() -> None:
     print("\n[Stage 3/3] Model export")
     run([python, "research/exportModel.py"])
 
-    # exportModel.py writes to ./models/ (relative to CWD).
-    # If --model-dir differs, copy the artefacts there.
     default_model_dir = Path("models")
     target_model_dir = Path(cfg.model_dir)
     if target_model_dir.resolve() != default_model_dir.resolve():
