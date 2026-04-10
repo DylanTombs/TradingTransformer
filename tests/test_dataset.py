@@ -144,23 +144,70 @@ class TestOutputShape:
         assert seq_x_mark.shape == (SEQ_LEN, 3)
 
 
+# Pred flag
+
+class TestPredFlag:
+
+    def test_pred_seq_x_has_correct_shape(self):
+        """In pred mode seqX must have shape (seqLen, n_features)."""
+        df = _make_df(50)
+        fs, ts = _make_train_scalers(df)
+        ds = DataFrameDataset(df, "pred", SIZE, TARGET, AUX_FEATURES,
+                              featureScaler=fs, targetScaler=ts)
+        seq_x, seq_y, seq_x_mark, seq_y_mark = ds[0]
+        n_features = len(AUX_FEATURES) + 1
+        assert seq_x.shape == (SEQ_LEN, n_features)
+
+    def test_pred_seq_y_is_zero_padded_placeholder(self):
+        """In pred mode seqY is a zero array of shape (labelLen+predLen, n_features)."""
+        df = _make_df(50)
+        fs, ts = _make_train_scalers(df)
+        ds = DataFrameDataset(df, "pred", SIZE, TARGET, AUX_FEATURES,
+                              featureScaler=fs, targetScaler=ts)
+        _, seq_y, _, _ = ds[0]
+        n_features = len(AUX_FEATURES) + 1
+        assert seq_y.shape == (LABEL_LEN + PRED_LEN, n_features)
+
+
+# InverseTransform
+
+class TestInverseTransform:
+
+    def test_inverse_transform_target_recovers_original_scale(self):
+        """Round-tripping through scale → inverse_transform must recover originals."""
+        df = _make_df(50)
+        ds = DataFrameDataset(df, "train", SIZE, TARGET, AUX_FEATURES)
+        original = df[TARGET].values[:5].reshape(-1, 1)
+        scaled = ds.targetScaler.transform(original)
+        recovered = ds.inverseTransform(scaled, isTarget=True)
+        np.testing.assert_allclose(recovered, original.flatten(), rtol=1e-5)
+
+    def test_inverse_transform_features_recovers_original_scale(self):
+        df = _make_df(50)
+        ds = DataFrameDataset(df, "train", SIZE, TARGET, AUX_FEATURES)
+        original = df[AUX_FEATURES].values[:5]
+        scaled = ds.featureScaler.transform(original)
+        recovered = ds.inverseTransform(scaled, isTarget=False)
+        np.testing.assert_allclose(recovered, original, rtol=1e-5)
+
+    def test_inverse_transform_features_raises_when_no_feature_scaler(self):
+        """When only target is used (no aux features), feature inverse raises."""
+        df = _make_df(50)
+        ds = DataFrameDataset(df, "train", SIZE, TARGET, [])
+        dummy = np.zeros((5, 1))
+        with pytest.raises(ValueError, match="No feature scaler"):
+            ds.inverseTransform(dummy, isTarget=False)
+
 
 
 class TestMultiTickerLeakage:
 
-    @pytest.mark.xfail(
-        reason=(
-            "Known bug: valid_indices is computed per-ticker but __getitem__ "
-            "uses sequential indices into the full concatenated dataX array. "
-            "Windows at ticker boundaries span data from two different stocks."
-        )
-    )
     def test_windows_do_not_cross_ticker_boundaries(self):
-        """Each window must contain data from exactly one ticker.
+        """Every window must be drawn from exactly one ticker.
 
-        With two tickers (20 rows each) and seqLen=10, predLen=3, a window
-        starting at index 12 spans rows 12-21, crossing the ticker boundary
-        at row 20.  The dataset should prevent this but currently does not.
+        valid_indices stores the global start row for each valid window.
+        __getitem__ must use valid_indices[index] (not the raw index) so that
+        windows are never constructed across a ticker boundary.
         """
         n_per_ticker = 20
         df_a = _make_df(n_per_ticker, ticker="AAPL", seed=0)
@@ -169,22 +216,29 @@ class TestMultiTickerLeakage:
 
         ds = DataFrameDataset(df, "train", SIZE, TARGET, AUX_FEATURES)
 
-        # Window at index 12: rows [12, 22) — crosses the boundary at row 20
-        boundary_window_idx = 12
-        seq_x, _, _, _ = ds[boundary_window_idx]
+        for idx in range(len(ds)):
+            s_begin = ds.valid_indices[idx]
+            s_end = s_begin + SEQ_LEN
+            tickers_in_window = set(df["ticker"].iloc[s_begin:s_end])
+            assert len(tickers_in_window) == 1, (
+                f"Window {idx} (rows {s_begin}–{s_end}) spans tickers: {tickers_in_window}"
+            )
 
-        # The first n_per_ticker rows are AAPL; scaled values will differ
-        # from GOOGL.  A cross-ticker window will mix the two distributions.
-        # We detect leakage by checking that all rows in the window come from
-        # the same slice of the original un-mixed scaled data.
-        aapl_data = ds.dataX[:n_per_ticker]
-        googl_data = ds.dataX[n_per_ticker:]
+    def test_len_reflects_valid_indices_not_raw_array(self):
+        """len(dataset) must equal len(valid_indices) for multi-ticker data.
 
-        window_rows = ds.dataX[boundary_window_idx: boundary_window_idx + SEQ_LEN]
-        rows_in_aapl = all(
-            any(np.allclose(row, aapl_row) for aapl_row in aapl_data)
-            for row in window_rows
-        )
-        assert rows_in_aapl, (
-            "Window crosses ticker boundary: contains rows from both AAPL and GOOGL"
-        )
+        The old formula len(dataX) - seqLen - predLen + 1 overcounts because
+        it ignores per-ticker boundaries.
+        """
+        n_per_ticker = 20
+        df_a = _make_df(n_per_ticker, ticker="AAPL", seed=0)
+        df_b = _make_df(n_per_ticker, ticker="GOOGL", seed=1)
+        df = pd.concat([df_a, df_b], ignore_index=True)
+
+        ds = DataFrameDataset(df, "train", SIZE, TARGET, AUX_FEATURES)
+
+        windows_per_ticker = n_per_ticker - SEQ_LEN - PRED_LEN + 1
+        assert len(ds) == 2 * windows_per_ticker
+        assert len(ds) == len(ds.valid_indices)
+        # Regression: old formula (flat array length) would return 28, not 16
+        assert len(ds) != len(ds.dataX) - SEQ_LEN - PRED_LEN + 1

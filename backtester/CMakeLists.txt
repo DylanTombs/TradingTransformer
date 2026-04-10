@@ -3,6 +3,20 @@ project(backtester)
 
 set(CMAKE_CXX_STANDARD 17)
 
+# ---------------------------------------------------------------------------
+# Coverage instrumentation (GCC / Clang only, disabled by default)
+# Enable with:  cmake -DENABLE_COVERAGE=ON ..
+# ---------------------------------------------------------------------------
+option(ENABLE_COVERAGE "Instrument binaries for gcov/lcov coverage" OFF)
+if(ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options(-O0 -g --coverage)
+        add_link_options(--coverage)
+    else()
+        message(WARNING "ENABLE_COVERAGE is only supported with GCC or Clang")
+    endif()
+endif()
+
 include_directories(include)
 
 file(GLOB_RECURSE SOURCES "src/*.cpp")

@@ -75,6 +75,18 @@ void FeatureCSVDataHandler::streamNext(EventQueue& queue) {
     // Extract timestamp
     const std::string& timestamp = fields[dateColIndex_];
 
+    // Gap detection: weekends are 2 days; anything >3 signals a missing bar
+    if (!prevTimestamp_.empty()) {
+        const int gap = daysBetween(prevTimestamp_, timestamp);
+        if (gap > 3) {
+            std::cerr << "[FeatureCSVDataHandler] WARNING: " << gap
+                      << "-day gap between " << prevTimestamp_
+                      << " and " << timestamp << " in " << symbol_ << "\n";
+            ++gapCount_;
+        }
+    }
+    prevTimestamp_ = timestamp;
+
     // Extract features in model order
     std::vector<double> features;
     features.reserve(featureColIndices_.size());
@@ -104,6 +116,20 @@ std::vector<std::string> FeatureCSVDataHandler::splitCSVRow(
     while (std::getline(ss, token, ','))
         tokens.push_back(token);
     return tokens;
+}
+
+int FeatureCSVDataHandler::daysBetween(const std::string& t1,
+                                        const std::string& t2)
+{
+    auto parseDate = [](const std::string& s) -> std::time_t {
+        std::tm tm = {};
+        std::istringstream ss(s);
+        ss >> std::get_time(&tm, "%Y-%m-%d");
+        tm.tm_isdst = -1;
+        return std::mktime(&tm);
+    };
+    const double diff = std::difftime(parseDate(t2), parseDate(t1));
+    return static_cast<int>(diff / 86400.0 + 0.5);
 }
 
 std::vector<double> FeatureCSVDataHandler::parseTimeMark(

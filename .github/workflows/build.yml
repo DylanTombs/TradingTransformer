@@ -14,13 +14,29 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake g++
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ lcov
 
       - name: Configure
-        run: cmake -S backtester -B build
+        run: cmake -S backtester -B build -DENABLE_COVERAGE=ON
 
       - name: Build
         run: cmake --build build --parallel $(nproc)
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      - name: Generate coverage report
+        run: |
+          lcov --capture --directory build \
+               --output-file build/coverage.info \
+               --ignore-errors mismatch
+          lcov --remove build/coverage.info \
+               '*/googletest/*' '/usr/*' \
+               --output-file build/coverage_filtered.info
+          lcov --list build/coverage_filtered.info
+
+      - name: Upload C++ coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-coverage
+          path: build/coverage_filtered.info

@@ -1,0 +1,9 @@
+[run]
+source = research
+omit =
+    research/exportModel.py
+    research/transformer/Interface.py
+    research/features/technicalIndicators.py
+
+[report]
+fail_under = 80

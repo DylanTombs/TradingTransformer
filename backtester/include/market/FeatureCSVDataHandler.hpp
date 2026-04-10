@@ -37,6 +37,9 @@ public:
 
     void streamNext(EventQueue& queue) override;
 
+    /// Number of date-gaps > 3 calendar days observed while streaming.
+    int gapCount() const { return gapCount_; }
+
 private:
     std::ifstream file_;
     std::string   symbol_;
@@ -47,9 +50,16 @@ private:
     int              closeColIndex_ = -1;
     int              dateColIndex_  = -1;
 
+    // Gap detection: count and log missing-bar sequences (>3 calendar days).
+    int         gapCount_      = 0;
+    std::string prevTimestamp_;
+
     std::vector<std::string> splitCSVRow(const std::string& line) const;
 
     // Returns [month (1-12), day (1-31), weekday (0=Mon … 6=Sun)]
     // matching Python's datetime.weekday() convention.
     static std::vector<double> parseTimeMark(const std::string& timestamp);
+
+    // Returns the number of calendar days between two ISO-8601 date strings.
+    static int daysBetween(const std::string& t1, const std::string& t2);
 };

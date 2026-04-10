@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -55,6 +56,39 @@ struct BacktestConfig {
     int    correlationWindow  = 60;   ///< Rolling days for correlation matrix
     double correlationThreshold = 0.7; ///< Correlation above this discounts size
 
+    // ---- Validation --------------------------------------------------------
+    /// Throws std::invalid_argument if any field violates its constraint.
+    void validate() const {
+        auto require = [](bool ok, const char* msg) {
+            if (!ok) throw std::invalid_argument(std::string("BacktestConfig: ") + msg);
+        };
+        auto fileExists = [](const std::string& p) -> bool {
+            if (p.empty()) return true;   // optional paths skip the check
+            std::ifstream f(p);
+            return f.good();
+        };
+
+        require(initialCash        >  0.0,  "initialCash must be > 0");
+        require(riskFraction       >  0.0 && riskFraction       <= 1.0,
+                "riskFraction must be in (0, 1]");
+        require(maxSymbolExposure  >  0.0 && maxSymbolExposure  <= 1.0,
+                "maxSymbolExposure must be in (0, 1]");
+        require(maxTotalExposure   >  0.0 && maxTotalExposure   <= 1.0,
+                "maxTotalExposure must be in (0, 1]");
+        require(maxPositionSize    >  0,     "maxPositionSize must be > 0");
+        require(halfSpread         >= 0.0,   "halfSpread must be >= 0");
+        require(slippageFraction   >= 0.0,   "slippageFraction must be >= 0");
+        require(marketImpact       >= 0.0,   "marketImpact must be >= 0");
+        require(commission         >= 0.0,   "commission must be >= 0");
+        require(correlationWindow  >  0,     "correlationWindow must be > 0");
+        require(correlationThreshold >= 0.0 && correlationThreshold <= 1.0,
+                "correlationThreshold must be in [0, 1]");
+
+        require(fileExists(modelPt),       "modelPt path does not exist");
+        require(fileExists(featScalerCsv), "featScalerCsv path does not exist");
+        require(fileExists(targScalerCsv), "targScalerCsv path does not exist");
+    }
+
     // ---- Factory -----------------------------------------------------------
     static BacktestConfig loadFromYAML(const std::string& path) {
         BacktestConfig cfg;
@@ -108,6 +142,7 @@ struct BacktestConfig {
                 cfg.symbols.push_back({kv.at(sk), kv.at(fk)});
         }
 
+        cfg.validate();
         return cfg;
     }
 
