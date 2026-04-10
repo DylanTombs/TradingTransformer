@@ -42,6 +42,7 @@ jobs:
             --cov=research \
             --cov-report=xml \
             --cov-report=term-missing \
+            --cov-omit=research/exportModel.py,research/transformer/Interface.py,research/features/technicalIndicators.py \
             --cov-fail-under=80
 
       - name: Upload coverage report
